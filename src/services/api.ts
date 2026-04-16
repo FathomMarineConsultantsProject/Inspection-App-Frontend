@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Use your local IPv4 address - update if needed
-const BASE_URL = 'http://192.168.0.6:4000';
+const BASE_URL = 'https://inspection-audit-app-backend.onrender.com';
 
 const API = axios.create({
   baseURL: BASE_URL,
