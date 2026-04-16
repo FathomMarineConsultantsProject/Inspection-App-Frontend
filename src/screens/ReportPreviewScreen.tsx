@@ -1,7 +1,7 @@
 import React from "react";
 import { Alert, Image, ScrollView, Text, View } from "react-native";
 import PrimaryButton from "../components/PrimaryButton";
-import { exportInspectionPDF } from "../utils/pdfExports"; // ✅ adjust path
+import { exportInspectionPDF } from "../utils/pdfGenerator"; // ✅ adjust path
 
 export default function ReportPreviewScreen({ navigation, route }: any) {
   const { ship, report } = route.params;
