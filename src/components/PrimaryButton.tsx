@@ -1,5 +1,6 @@
+import { Ionicons } from "@expo/vector-icons";
 import React from "react";
-import { Pressable, Text, ActivityIndicator } from "react-native";
+import { ActivityIndicator, Pressable, Text } from "react-native";
 import { COLORS } from "../theme/colors";
 
 type Props = {
@@ -7,6 +8,7 @@ type Props = {
   onPress: () => void;
   loading?: boolean;
   disabled?: boolean;
+  icon?: React.ComponentProps<typeof Ionicons>["name"];
 };
 
 export default function PrimaryButton({
@@ -14,6 +16,7 @@ export default function PrimaryButton({
   onPress,
   loading,
   disabled,
+  icon,
 }: Props) {
   return (
     <Pressable
@@ -22,6 +25,8 @@ export default function PrimaryButton({
       style={{
         paddingVertical: 16,
         borderRadius: 14,
+        flexDirection: "row",
+        justifyContent: "center",
         alignItems: "center",
         backgroundColor:
           disabled || loading ? "#A0AEC0" : COLORS.primary,
@@ -30,15 +35,25 @@ export default function PrimaryButton({
       {loading ? (
         <ActivityIndicator color="#fff" />
       ) : (
-        <Text
-          style={{
-            color: "#fff",
-            fontWeight: "800",
-            fontSize: 15,
-          }}
-        >
-          {title}
-        </Text>
+        <>
+          {icon ? (
+            <Ionicons
+              name={icon}
+              size={16}
+              color="#fff"
+              style={{ marginBottom: -1, marginRight: 8 }}
+            />
+          ) : null}
+          <Text
+            style={{
+              color: "#fff",
+              fontWeight: "800",
+              fontSize: 15,
+            }}
+          >
+            {title}
+          </Text>
+        </>
       )}
     </Pressable>
   );
