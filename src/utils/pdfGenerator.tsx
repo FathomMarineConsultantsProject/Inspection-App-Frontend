@@ -1,4 +1,4 @@
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 
@@ -62,9 +62,10 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
   return chunks;
 }
 
-function escapeHtml(value?: string): string {
-  if (!value) return "";
-  return value
+function escapeHtml(value?: unknown): string {
+  const safeValue = typeof value === "string" ? value : "";
+  if (!safeValue) return "";
+  return safeValue
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -75,67 +76,69 @@ function escapeHtml(value?: string): string {
 function buildCoverPage(
   shipInfo: ShipInfo,
   logoDataUri: string,
-  shipPhotoDataUri: string
+  shipPhotoDataUri: string,
+  firstImageDataUri: string
 ): string {
+  const ship = shipInfo as ShipInfo & {
+    name?: string;
+    inspectorName?: string;
+    location?: string;
+    portName?: string;
+  };
   const totalPhotos = shipInfo.totalPhotos ?? 0;
-
-  const logoHtml =
-    logoDataUri !== EMPTY_IMAGE_FALLBACK
-      ? `<img src="${logoDataUri}" class="logo" alt="Company Logo" />`
-      : `<div class="logo-fallback">FATHOM</div>`;
-
-  const shipPhotoHtml =
+  const safeDate = typeof shipInfo?.date === "string" ? shipInfo.date : "";
+  const displayDate = (safeDate || "").trim() || new Date().toLocaleDateString();
+  const heroImageUri =
     shipPhotoDataUri !== EMPTY_IMAGE_FALLBACK
-      ? `<img src="${shipPhotoDataUri}" class="cover-ship-photo" alt="Ship Photo" />`
-      : `<div class="cover-ship-photo placeholder">No ship photo provided</div>`;
+      ? shipPhotoDataUri
+      : firstImageDataUri !== EMPTY_IMAGE_FALLBACK
+      ? firstImageDataUri
+      : "";
 
   return `
-    <section class="page cover-page">
-      <div class="cover-shell">
-        <div class="cover-header">
-          <div class="cover-logo-wrap">
-            ${logoHtml}
-          </div>
-
-          <div class="cover-title-wrap">
-            <div class="cover-powered">Powered by Fathom Marine consultants</div>
-            <div class="cover-title">INSPECTION REPORT</div>
-          </div>
-
-          <div class="cover-date">${escapeHtml(shipInfo.date)}</div>
+    <div style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; color:#1f2937;">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+        <div style="width:32%; min-height:1px; display:flex; align-items:center;">
+          ${
+            logoDataUri !== EMPTY_IMAGE_FALLBACK
+              ? `<img src="${logoDataUri}" style="height:52px; max-width:100%; object-fit:contain;" alt="Company Logo" />`
+              : `<div style="font-size:18px; font-weight:700; color:#1e3a8a;">FATHOM</div>`
+          }
         </div>
 
-        <div class="cover-divider"></div>
-
-        <div class="cover-info-box">
-          <div class="info-column">
-            <div class="info-item">
-              <span class="info-label">Ship:</span>
-              <span class="info-value">${escapeHtml(shipInfo.shipName)}</span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">Inspector:</span>
-              <span class="info-value">${escapeHtml(shipInfo.inspector)}</span>
-            </div>
+        <div style="width:36%; text-align:center;">
+          <div style="font-size:12px; color:#4b5563; margin-bottom:2px;">
+            Powered by Fathom Marine Consultants
           </div>
-
-          <div class="info-column">
-            <div class="info-item">
-              <span class="info-label">Port:</span>
-              <span class="info-value">${escapeHtml(shipInfo.port)}</span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">Total Photos:</span>
-              <span class="info-value">${String(totalPhotos)}</span>
-            </div>
+          <div style="font-size:24px; font-weight:800; letter-spacing:0.6px; color:#1e3a8a;">
+            INSPECTION REPORT
           </div>
         </div>
 
-        <div class="cover-photo-section">
-          ${shipPhotoHtml}
+        <div style="width:32%; text-align:right; font-size:14px; font-weight:700; color:#111827;">
+          ${escapeHtml(displayDate)}
         </div>
       </div>
-    </section>
+
+      <div style="height:2px; background:#1e3a8a; margin:14px 0 16px;"></div>
+
+      <div style="background:#f3f4f6; border:1px solid #e5e7eb; border-radius:8px; padding:14px 16px; display:flex; justify-content:space-between; gap:24px; margin-bottom:16px; font-size:13px; line-height:1.6;">
+        <div>
+          <div><span style="font-weight:700; color:#374151;">Ship:</span> ${escapeHtml(ship?.name || ship?.shipName || "-")}</div>
+          <div><span style="font-weight:700; color:#374151;">Inspector:</span> ${escapeHtml(ship?.inspector || ship?.inspectorName || "-")}</div>
+        </div>
+        <div>
+          <div><span style="font-weight:700; color:#374151;">Port:</span> ${escapeHtml(ship?.port || ship?.portName || ship?.location || "-")}</div>
+          <div><span style="font-weight:700; color:#374151;">Total Photos:</span> ${String(totalPhotos)}</div>
+        </div>
+      </div>
+
+      ${
+        heroImageUri
+          ? `<img src="${heroImageUri}" style="width:100%; aspect-ratio:16 / 9; object-fit:cover; border-radius:10px; border:1px solid #e5e7eb;" alt="Cover Image" />`
+          : `<div style="width:100%; aspect-ratio:16 / 9; border-radius:10px; border:1px solid #e5e7eb; background:#f9fafb; display:flex; align-items:center; justify-content:center; color:#6b7280; font-size:13px;">No cover image provided</div>`
+      }
+    </div>
   `;
 }
 
@@ -144,28 +147,48 @@ function buildPhotoPage(
   imageDataUris: string[],
   imagesPerPage: 2 | 4 | 6
 ): string {
-  const imageHeightMap: Record<2 | 4 | 6, string> = {
-    2: "320px",
-    4: "220px",
-    6: "155px",
+  const getGridColumns = (value: number) => {
+    if (value === 2) return "1fr";
+    if (value === 4) return "1fr 1fr";
+    if (value === 6) return "1fr 1fr";
+    return "1fr";
   };
 
-  const imageHeight = imageHeightMap[imagesPerPage];
+  const imageHeight =
+    imagesPerPage === 2 ? "420px" : imagesPerPage === 4 ? "240px" : "180px";
 
-  const cards = chunk
-    .map((item, index) => {
+  const cards = (chunk || [])
+    .map((img, index) => {
       const imageUri = imageDataUris[index] || EMPTY_IMAGE_FALLBACK;
+      const description = typeof img?.description === "string" ? img.description : "";
+      const desc = (description || "").trim();
 
       return `
-        <div class="photo-card">
+        <div style="
+          background: #fff;
+          border: 1px solid #e5e7eb;
+          padding: 8px;
+          display: flex;
+          flex-direction: column;
+          border-radius:8px;
+          box-sizing:border-box;
+        ">
           ${
             imageUri !== EMPTY_IMAGE_FALLBACK
-              ? `<img src="${imageUri}" class="photo-image" style="height:${imageHeight};" alt="Inspection Photo ${index + 1}" />`
-              : `<div class="photo-image placeholder" style="height:${imageHeight};">No photo</div>`
+              ? `<img src="${imageUri}" style="
+                  width:100%;
+                  height: ${imageHeight};
+                  object-fit:cover;
+                  border-radius:6px;
+                " alt="Inspection Photo ${index + 1}" />`
+              : `<div style="width: 100%; height: ${imageHeight}; border-radius: 6px; background: #f3f4f6;
+                  display: flex; align-items: center; justify-content: center; color: #6b7280;">No photo</div>`
           }
-          <div class="photo-description">
-            <span class="desc-label">Description:</span>
-            <span class="desc-value">${escapeHtml(item.description || "-")}</span>
+          <div style="
+            font-size: 11px;
+            margin-top: 6px;
+          ">
+            ${escapeHtml(desc || "-")}
           </div>
         </div>
       `;
@@ -173,11 +196,13 @@ function buildPhotoPage(
     .join("");
 
   return `
-    <section class="page photo-page">
-      <div class="photo-grid">
-        ${cards}
-      </div>
-    </section>
+    <div style="
+      display: grid;
+      grid-template-columns: ${getGridColumns(imagesPerPage)};
+      gap: 16px;
+    ">
+      ${cards}
+    </div>
   `;
 }
 
@@ -199,182 +224,8 @@ function buildStyles(): string {
       font-size: 12px;
     }
 
-    .page {
-      width: 210mm;
-      min-height: 297mm;
-      padding: 18mm 16mm 14mm 16mm;
-      background: #ffffff;
-      page-break-after: always;
-    }
-
-    .page:last-child {
-      page-break-after: avoid;
-    }
-
-    .cover-shell {
-      width: 100%;
-    }
-
-    .cover-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 12px;
-      gap: 12px;
-    }
-
-    .cover-logo-wrap {
-      width: 120px;
-      display: flex;
-      align-items: center;
-      justify-content: flex-start;
-    }
-
-    .logo {
-      max-width: 110px;
-      max-height: 54px;
-      object-fit: contain;
+    img {
       display: block;
-    }
-
-    .logo-fallback {
-      width: 100px;
-      height: 50px;
-      background: #0f766e;
-      color: #ffffff;
-      font-weight: 700;
-      font-size: 16px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 4px;
-    }
-
-    .cover-title-wrap {
-      flex: 1;
-      text-align: center;
-    }
-
-    .cover-powered {
-      font-size: 10px;
-      color: #5b6472;
-      margin-bottom: 4px;
-    }
-
-    .cover-title {
-      font-size: 18px;
-      font-weight: 800;
-      color: #233a6b;
-      letter-spacing: 0.5px;
-    }
-
-    .cover-date {
-      width: 120px;
-      text-align: right;
-      font-size: 12px;
-      font-weight: 700;
-      color: #233a6b;
-    }
-
-    .cover-divider {
-      height: 2px;
-      background: #2e4c84;
-      margin-bottom: 18px;
-    }
-
-    .cover-info-box {
-      display: flex;
-      justify-content: space-between;
-      gap: 30px;
-      background: #f1f3f5;
-      padding: 14px 14px;
-      margin-bottom: 18px;
-    }
-
-    .info-column {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-
-    .info-item {
-      display: flex;
-      align-items: baseline;
-      flex-wrap: wrap;
-      gap: 4px;
-      line-height: 1.35;
-    }
-
-    .info-label {
-      font-size: 11px;
-      font-weight: 700;
-      color: #233a6b;
-    }
-
-    .info-value {
-      font-size: 11px;
-      color: #2a2f36;
-    }
-
-    .cover-photo-section {
-      width: 100%;
-    }
-
-    .cover-ship-photo {
-      width: 100%;
-      height: 300px;
-      object-fit: cover;
-      display: block;
-      border-radius: 3px;
-    }
-
-    .placeholder {
-      background: #e9edf3;
-      color: #7b8794;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 13px;
-    }
-
-    .photo-page {
-      padding-top: 14mm;
-      padding-bottom: 12mm;
-    }
-
-    .photo-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 14px;
-    }
-
-    .photo-card {
-      border: 1px solid #d9d9d9;
-      background: #ffffff;
-      padding: 8px;
-    }
-
-    .photo-image {
-      width: 100%;
-      object-fit: cover;
-      display: block;
-      background: #f5f5f5;
-    }
-
-    .photo-description {
-      padding-top: 10px;
-      font-size: 11px;
-      line-height: 1.35;
-    }
-
-    .desc-label {
-      font-weight: 700;
-      color: #222;
-    }
-
-    .desc-value {
-      color: #333;
     }
   `;
 }
@@ -398,6 +249,19 @@ function buildHtmlDocument(content: string): string {
 async function buildPdfHtml(options: GeneratePdfOptions): Promise<string> {
   const { shipInfo, images, imagesPerPage } = options;
 
+  images.forEach((img, index) => {
+    const uri = img?.uri || "";
+    const isSupported =
+      uri.startsWith("file://") ||
+      uri.startsWith("data:image/") ||
+      uri.startsWith("http://") ||
+      uri.startsWith("https://");
+
+    if (!isSupported) {
+      console.log(`UNSUPPORTED IMAGE URI FORMAT at index ${index}:`, uri);
+    }
+  });
+
   const [logoDataUri, shipPhotoDataUri, ...photoDataUris] = await Promise.all([
     uriToBase64DataUri(shipInfo.companyLogoUri ?? ""),
     uriToBase64DataUri(shipInfo.shipPhotoUri ?? ""),
@@ -412,40 +276,66 @@ async function buildPdfHtml(options: GeneratePdfOptions): Promise<string> {
       totalPhotos,
     },
     logoDataUri,
-    shipPhotoDataUri
+    shipPhotoDataUri,
+    photoDataUris[0] || EMPTY_IMAGE_FALLBACK
   );
 
-  const imageChunks = chunkArray(images, imagesPerPage);
+  const imagePages = chunkArray(images, imagesPerPage);
 
-  const photoPagesHtml = imageChunks
-    .map((chunk, chunkIndex) => {
-      const chunkUris = photoDataUris.slice(
-        chunkIndex * imagesPerPage,
-        chunkIndex * imagesPerPage + chunk.length
-      );
+  const photoPages = imagePages.map((pageImages, pageIndex) => {
+    const pageUris = photoDataUris.slice(
+      pageIndex * imagesPerPage,
+      pageIndex * imagesPerPage + pageImages.length
+    );
+    return buildPhotoPage(pageImages, pageUris, imagesPerPage);
+  });
 
-      return buildPhotoPage(chunk, chunkUris, imagesPerPage);
+  const pages = [coverHtml, ...photoPages];
+  const html = pages
+    .map((page) => {
+      return `
+        <div style="
+          width: 100%;
+          height: 100%;
+          padding: 16px;
+          box-sizing: border-box;
+          display: flex;
+          flex-direction: column;
+          justify-content: flex-start;
+        ">
+          ${page}
+        </div>
+      `;
     })
     .join("");
 
-  return buildHtmlDocument(`${coverHtml}${photoPagesHtml}`);
+  console.log("FINAL HTML READY");
+  return buildHtmlDocument(html);
 }
 
-function buildSafeFileName(shipName: string, date: string): string {
-  const safeShip = shipName.trim().replace(/\s+/g, "_").replace(/[^\w-]/g, "");
-  const safeDate = date.trim().replace(/[^\dA-Za-z-]/g, "-");
+function buildSafeFileName(shipName: unknown, date: unknown): string {
+  const safeShip = ((typeof shipName === "string" ? shipName : "") || "")
+    .trim()
+    .replace(/\s+/g, "_")
+    .replace(/[^\w-]/g, "");
+  const safeDate = ((typeof date === "string" ? date : "") || "")
+    .trim()
+    .replace(/[^\dA-Za-z-]/g, "-");
   return `Fathom_Inspection_${safeShip || "Ship"}_${safeDate || "Date"}.pdf`;
 }
 
 export async function generatePdfUri(
   options: GeneratePdfOptions
 ): Promise<string> {
+  console.log("GENERATING HTML...");
   const html = await buildPdfHtml(options);
 
   const { uri } = await Print.printToFileAsync({
     html,
     base64: false,
   });
+  const fileUri = uri;
+  console.log("PDF URI:", fileUri);
 
   const fileName = buildSafeFileName(
     options.shipInfo.shipName,
@@ -461,8 +351,9 @@ export async function generatePdfUri(
     }
   } catch {}
 
+  console.log("Moving file...");
   await FileSystem.moveAsync({
-    from: uri,
+    from: fileUri,
     to: destinationUri,
   });
 
@@ -472,17 +363,30 @@ export async function generatePdfUri(
 export async function generateAndSharePdf(
   options: GeneratePdfOptions
 ): Promise<void> {
-  const pdfUri = await generatePdfUri(options);
+  try {
+    console.log("START PDF GENERATION");
 
-  const canShare = await Sharing.isAvailableAsync();
+    const pdfUri = await generatePdfUri(options);
 
-  if (!canShare) {
-    throw new Error(`Sharing is not available on this device. PDF saved at: ${pdfUri}`);
+    console.log("PDF URI:", pdfUri);
+
+    const canShare = await Sharing.isAvailableAsync();
+
+    if (!canShare) {
+      throw new Error(
+        `Sharing is not available on this device. PDF saved at: ${pdfUri}`
+      );
+    }
+
+    await Sharing.shareAsync(pdfUri, {
+      mimeType: "application/pdf",
+      dialogTitle: "Share Inspection Report",
+      UTI: "com.adobe.pdf",
+    });
+
+    console.log("SHARE SUCCESS");
+  } catch (err) {
+    console.log("GENERATION FAILED:", err);
+    throw err;
   }
-
-  await Sharing.shareAsync(pdfUri, {
-    mimeType: "application/pdf",
-    dialogTitle: "Share Inspection Report",
-    UTI: "com.adobe.pdf",
-  });
 }

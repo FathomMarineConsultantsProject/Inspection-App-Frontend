@@ -1,7 +1,7 @@
 import React from "react";
 import { Alert, Image, ScrollView, Text, View } from "react-native";
 import PrimaryButton from "../components/PrimaryButton";
-import { exportInspectionPDF } from "../utils/pdfGenerator"; // ✅ adjust path
+import { exportInspectionPDF } from "../utils/pdfExports";
 
 export default function ReportPreviewScreen({ navigation, route }: any) {
   const { ship, report } = route.params;
@@ -13,11 +13,9 @@ async function exportPDF() {
   try {
     console.log("PDF export started");
     await exportInspectionPDF({
-      ship,
-      report: {
-        imagesPerPage,
-        images,
-      },
+      shipInfo: ship,
+      images: images,
+      imagesPerPage: imagesPerPage,
     });
   } catch (e: any) {
     console.log("PDF export error =>", e);
