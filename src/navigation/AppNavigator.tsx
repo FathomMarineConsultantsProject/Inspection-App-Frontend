@@ -2,15 +2,18 @@ import React from "react";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { COLORS } from "../theme/colors";
 
 
+import HomeScreen from "../screens/HomeScreen";
 import ShipInfoScreen from "../screens/ShipInfoScreen";
 import CreateReportScreen from "../screens/CreateReportScreen";
 import ReportPreviewScreen from "../screens/ReportPreviewScreen";
 import ProfileScreen from "../screens/ProfileScreen";
 
 export type AppStackParamList = {
+  HomeMain: undefined;
   ShipInfo: undefined;
   CreateReport: { ship: any };
   ReportPreview: { ship: any; report: { imageUris: string[] } };
@@ -23,9 +26,22 @@ function HomeStackNavigator() {
   return (
     <HomeStack.Navigator>
       <HomeStack.Screen
+        name="HomeMain"
+        component={HomeScreen}
+        options={{
+          headerShown: false,
+          headerTitle: "",
+          title: "Home",
+        }}
+      />
+      <HomeStack.Screen
         name="ShipInfo"
         component={ShipInfoScreen}
-        options={{ title: "Ship Information" }}
+        options={{
+          title: "Ship Information",
+          headerBackTitle: "Home",
+          headerBackTitleVisible: true,
+        }}
       />
       <HomeStack.Screen
         name="CreateReport"
@@ -42,18 +58,21 @@ function HomeStackNavigator() {
 }
 
 export default function AppNavigator() {
+  const insets = useSafeAreaInsets();
+
   return (
     <Tab.Navigator
   screenOptions={({ route }) => ({
     headerShown: false,
+    tabBarHideOnKeyboard: true,
 
     tabBarShowLabel: true,
     tabBarActiveTintColor: COLORS.primary,
     tabBarInactiveTintColor: COLORS.textSecondary,
 
     tabBarStyle: {
-      height: 64,
-      paddingBottom: 10,
+      height: 64 + insets.bottom,
+      paddingBottom: insets.bottom,
       paddingTop: 8,
       backgroundColor: COLORS.surface,
       borderTopWidth: 1,

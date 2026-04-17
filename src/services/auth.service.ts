@@ -3,6 +3,11 @@ import API from './api';
 export type LoginResponse = {
   access_token: string;
   token_type?: string;
+  user?: {
+    name?: string;
+    full_name?: string;
+    email?: string;
+  };
   session?: {
     access_token: string;
   };
@@ -11,6 +16,11 @@ export type LoginResponse = {
 export type RegisterResponse = {
   access_token: string;
   token_type?: string;
+  user?: {
+    name?: string;
+    full_name?: string;
+    email?: string;
+  };
   session?: {
     access_token: string;
   };

@@ -2,11 +2,15 @@ import React, { useCallback, useMemo, useState } from "react";
 import {
   Alert,
   Image,
+  Keyboard,
+  KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TouchableWithoutFeedback,
   View,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
@@ -28,7 +32,8 @@ export default function ShipInfoScreen({ navigation }: any) {
 
   // ✅ Date
   const [inspectionDate, setInspectionDate] = useState<Date>(new Date());
-  const [showPicker, setShowPicker] = useState(false);
+  const [tempDate, setTempDate] = useState<Date>(new Date());
+  const [showModal, setShowModal] = useState(false);
 
   const dateLabel = useMemo(() => {
     return inspectionDate.toLocaleDateString(undefined, {
@@ -48,7 +53,8 @@ export default function ShipInfoScreen({ navigation }: any) {
       setShipPhotoUri(null);
       setCompanyLogoUri(null);
       setInspectionDate(new Date());
-      setShowPicker(false);
+      setTempDate(new Date());
+      setShowModal(false);
     }, [])
   );
 
@@ -89,10 +95,18 @@ export default function ShipInfoScreen({ navigation }: any) {
     if (!result.canceled) setCompanyLogoUri(result.assets[0].uri);
   }
 
-  function onChangeDate(_: any, selected?: Date) {
-    // Android closes after selection/dismiss
-    setShowPicker(false);
-    if (selected) setInspectionDate(selected);
+  function openDateModal() {
+    setTempDate(inspectionDate);
+    setShowModal(true);
+  }
+
+  function closeDateModal() {
+    setShowModal(false);
+  }
+
+  function confirmDateSelection() {
+    setInspectionDate(tempDate);
+    setShowModal(false);
   }
 
   function validate() {
@@ -125,13 +139,23 @@ export default function ShipInfoScreen({ navigation }: any) {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={80}
+    >
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+        <ScrollView
+          contentContainerStyle={[styles.container, { flexGrow: 1, paddingBottom: 140 }]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+        >
       {/* Title row + small date chip */}
       <View style={styles.headerRow}>
         <Text style={styles.title}>Ship Details</Text>
 
         <Pressable
-          onPress={() => setShowPicker(true)}
+          onPress={openDateModal}
           style={styles.dateChip}
           hitSlop={10}
         >
@@ -140,15 +164,37 @@ export default function ShipInfoScreen({ navigation }: any) {
         </Pressable>
       </View>
 
-      {/* Android Date dialog (shows only when tapped) */}
-      {showPicker && (
-        <DateTimePicker
-          value={inspectionDate}
-          mode="date"
-          display="default"
-          onChange={onChangeDate}
-        />
-      )}
+      <Modal
+        visible={showModal}
+        transparent
+        animationType="fade"
+        onRequestClose={closeDateModal}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalContainer}>
+            <DateTimePicker
+              value={tempDate}
+              mode="date"
+              display={Platform.OS === "ios" ? "inline" : "default"}
+              themeVariant="light"
+              onChange={(_, selectedDate) => {
+                if (selectedDate) {
+                  setTempDate(selectedDate);
+                }
+              }}
+            />
+
+            <View style={styles.modalActions}>
+              <Pressable onPress={closeDateModal} style={styles.cancelButton}>
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </Pressable>
+              <Pressable onPress={confirmDateSelection} style={styles.confirmButton}>
+                <Text style={styles.confirmButtonText}>Confirm</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Two boxes side-by-side */}
       <View style={styles.photoRow}>
@@ -204,7 +250,9 @@ export default function ShipInfoScreen({ navigation }: any) {
       />
 
       <PrimaryButton title="Next: Create Report" onPress={onNext} />
-    </ScrollView>
+        </ScrollView>
+      </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -235,6 +283,50 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#111",
     fontSize: 12,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 16,
+  },
+  modalContainer: {
+    width: "100%",
+    maxWidth: 380,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    paddingTop: 10,
+    paddingHorizontal: 10,
+    paddingBottom: 12,
+  },
+  modalActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 10,
+    marginTop: 10,
+  },
+  cancelButton: {
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    backgroundColor: "#fff",
+  },
+  cancelButtonText: {
+    color: "#374151",
+    fontWeight: "700",
+  },
+  confirmButton: {
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    backgroundColor: "#2563eb",
+  },
+  confirmButtonText: {
+    color: "#fff",
+    fontWeight: "700",
   },
 
   photoRow: {

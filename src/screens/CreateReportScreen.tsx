@@ -1,17 +1,24 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Image,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  TouchableWithoutFeedback,
   View,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import PrimaryButton from "../components/PrimaryButton";
+import type { Inspection } from "../utils/inspectionStorage";
+import { addToSyncQueue, parseInspectionsFromStorage } from "../utils/inspectionStorage";
 
 type Props = {
   navigation: any;
@@ -22,9 +29,11 @@ type ReportImage = {
   id: string;
   uri: string;
   description: string;
+  originalUri?: string;
+  croppedUri?: string;
 };
 
-const IMAGES_PER_PAGE_OPTIONS = [2, 4, 6] as const;
+const IMAGES_PER_PAGE_OPTIONS = [2, 4, 6, 8] as const;
 
 function makeId() {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -80,6 +89,7 @@ export default function CreateReportScreen({ navigation, route }: Props) {
     const newItems: ReportImage[] = result.assets.map((a) => ({
       id: makeId(),
       uri: a.uri,
+      originalUri: a.uri,
       description: "",
     }));
 
@@ -113,6 +123,7 @@ export default function CreateReportScreen({ navigation, route }: Props) {
         const newItem: ReportImage = {
           id: makeId(),
           uri: photo.uri,
+          originalUri: photo.uri,
           description: "",
         };
         setItems((prev) => [newItem, ...prev]);
@@ -132,10 +143,66 @@ export default function CreateReportScreen({ navigation, route }: Props) {
     );
   }
 
-  function goNext() {
+  async function handleEditCrop(item: ReportImage) {
+    try {
+      if (!canUseGallery) {
+        Alert.alert(
+          "Permission needed",
+          "Please allow gallery access to pick images.",
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        quality: 1,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        const newUri = result.assets[0].uri;
+        setItems((prev) =>
+          prev.map((img) =>
+            img.id === item.id ? { ...img, croppedUri: newUri } : img,
+          ),
+        );
+      }
+    } catch (e) {
+      console.log("Crop error", e);
+    }
+  }
+
+  async function goNext() {
     if (items.length === 0) {
       Alert.alert("Add photos", "Please add at least 1 photo for the report.");
       return;
+    }
+
+    try {
+      const existing = await AsyncStorage.getItem("inspections");
+      const list = parseInspectionsFromStorage(existing);
+
+      const now = Date.now();
+      const newInspection: Inspection = {
+        id: now.toString(),
+        createdAt: now,
+        updatedAt: now,
+        ship,
+        report: {
+          imagesPerPage,
+          images: items,
+        },
+        status: "completed",
+        syncStatus: "pending",
+        export: undefined,
+      };
+
+      const updated = [newInspection, ...list];
+      const limited = updated.slice(0, 20);
+      await AsyncStorage.setItem("inspections", JSON.stringify(limited));
+      await addToSyncQueue(newInspection.id);
+    } catch {
+      // Storage failure should not block preview / export flow.
     }
 
     navigation.navigate("ReportPreview", {
@@ -169,7 +236,17 @@ export default function CreateReportScreen({ navigation, route }: Props) {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={80}
+    >
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+        <ScrollView
+          contentContainerStyle={[styles.container, { flexGrow: 1, paddingBottom: 140 }]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+        >
       <Text style={styles.title}>Upload Images</Text>
 
       {/* ✅ Images per page (same section like screenshot, keep your style) */}
@@ -219,7 +296,7 @@ export default function CreateReportScreen({ navigation, route }: Props) {
           <View key={item.id} style={styles.gridCard}>
             <View style={styles.gridItem}>
               <Image
-                source={{ uri: item.uri }}
+                source={{ uri: item.croppedUri || item.uri }}
                 resizeMode="cover"
                 style={styles.thumb}
               />
@@ -238,6 +315,13 @@ export default function CreateReportScreen({ navigation, route }: Props) {
               placeholderTextColor="#888"
               style={styles.descInput}
             />
+
+            <Pressable
+              style={styles.editCropBtn}
+              onPress={() => void handleEditCrop(item)}
+            >
+              <Text style={styles.editCropBtnText}>Edit / Crop</Text>
+            </Pressable>
           </View>
         ))}
       </View>
@@ -245,7 +329,9 @@ export default function CreateReportScreen({ navigation, route }: Props) {
       <View style={{ marginTop: 18 }}>
         <PrimaryButton title="PREVIEW & SUBMIT" onPress={goNext} />
       </View>
-    </ScrollView>
+        </ScrollView>
+      </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -362,6 +448,21 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontWeight: "600",
     color: "#111",
+  },
+
+  editCropBtn: {
+    marginTop: 8,
+    alignSelf: "stretch",
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: "#E5E7EB",
+    alignItems: "center",
+  },
+  editCropBtnText: {
+    fontWeight: "700",
+    color: "#111827",
+    fontSize: 13,
   },
 
   removeBadge: {

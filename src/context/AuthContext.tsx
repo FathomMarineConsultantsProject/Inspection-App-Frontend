@@ -1,10 +1,17 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 import React, { createContext, ReactNode, useContext, useEffect, useState } from "react";
-import { setAuthToken } from "../services/api";
+import API, { setAuthToken } from "../services/api";
 import { loginService, registerService } from "../services/auth.service";
 
 const USE_MOCK_AUTH = false;
 const TOKEN_KEY = "access_token";
+const USER_NAME_KEY = "user_name";
+const USER_EMAIL_KEY = "email";
+const ASYNC_USER_KEY = "user";
+const ASYNC_TOKEN_KEY = "token";
+const ASYNC_TOKEN_EXPIRY_KEY = "tokenExpiry";
+const TOKEN_VALID_MS = 72 * 60 * 60 * 1000;
 
 type AuthContextType = {
   token: string | null;
@@ -22,6 +29,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(false);
   const [bootstrapping, setBootstrapping] = useState(true);
 
+  function isNetworkError(error: any): boolean {
+    return !error?.response;
+  }
+
+  async function saveUserSnapshot(params: { name?: string; email?: string }) {
+    const { name, email } = params;
+    if (name) {
+      await SecureStore.setItemAsync(USER_NAME_KEY, name);
+    }
+    if (email) {
+      await SecureStore.setItemAsync(USER_EMAIL_KEY, email);
+    }
+  }
+
+  async function persistSessionToAsyncStorage(
+    accessToken: string,
+    user: { full_name?: string; name?: string; email?: string }
+  ) {
+    const expiry = Date.now() + TOKEN_VALID_MS;
+    await AsyncStorage.multiSet([
+      [ASYNC_TOKEN_KEY, accessToken],
+      [ASYNC_TOKEN_EXPIRY_KEY, String(expiry)],
+      [
+        ASYNC_USER_KEY,
+        JSON.stringify({
+          full_name: user.full_name || user.name || "",
+          email: user.email || "",
+        }),
+      ],
+    ]);
+  }
+
+  async function clearAsyncAuthStorage() {
+    await AsyncStorage.multiRemove([ASYNC_TOKEN_KEY, ASYNC_TOKEN_EXPIRY_KEY, ASYNC_USER_KEY]);
+  }
+
   async function login(email: string, password: string) {
     setIsLoading(true);
     try {
@@ -31,6 +74,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const mockToken = "mock-token-123";
         await SecureStore.setItemAsync(TOKEN_KEY, mockToken);
         setToken(mockToken);
+        setAuthToken(mockToken);
+        await saveUserSnapshot({ email });
+        await persistSessionToAsyncStorage(mockToken, { email });
         return;
       }
 
@@ -45,6 +91,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await SecureStore.setItemAsync(TOKEN_KEY, accessToken);
       setToken(accessToken);
       setAuthToken(accessToken);
+      await saveUserSnapshot({
+        name: res.user?.full_name || res.user?.name,
+        email: res.user?.email || email,
+      });
+      await persistSessionToAsyncStorage(accessToken, {
+        full_name: res.user?.full_name || res.user?.name,
+        email: res.user?.email || email,
+      });
     } catch (error: any) {
       console.error("Login error:", error.message);
       throw error;
@@ -62,10 +116,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const mockToken = "mock-token-123";
         await SecureStore.setItemAsync(TOKEN_KEY, mockToken);
         setToken(mockToken);
+        setAuthToken(mockToken);
+        await saveUserSnapshot({ name, email });
+        await persistSessionToAsyncStorage(mockToken, { full_name: name, email });
         return;
       }
 
       await registerService(name, email, password);
+      await saveUserSnapshot({ name, email });
       // After registration, login automatically
       await login(email, password);
     } catch (error: any) {
@@ -78,6 +136,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function logout() {
     await SecureStore.deleteItemAsync(TOKEN_KEY);
+    await clearAsyncAuthStorage();
     setToken(null);
     setAuthToken(null);
   }
@@ -85,10 +144,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
+        const expiryStr = await AsyncStorage.getItem(ASYNC_TOKEN_EXPIRY_KEY);
+        if (expiryStr && Date.now() > Number(expiryStr)) {
+          await SecureStore.deleteItemAsync(TOKEN_KEY);
+          await clearAsyncAuthStorage();
+          setToken(null);
+          setAuthToken(null);
+          return;
+        }
+
         const saved = await SecureStore.getItemAsync(TOKEN_KEY);
         if (saved) {
           setToken(saved);
           setAuthToken(saved);
+          try {
+            await API.get("/profile");
+          } catch (error: any) {
+            if (!isNetworkError(error)) {
+              await SecureStore.deleteItemAsync(TOKEN_KEY);
+              await clearAsyncAuthStorage();
+              setToken(null);
+              setAuthToken(null);
+            }
+          }
         }
       } catch (error) {
         console.error("Error restoring token:", error);
