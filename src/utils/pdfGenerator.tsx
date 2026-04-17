@@ -21,7 +21,7 @@ export interface ShipInfo {
 export interface GeneratePdfOptions {
   shipInfo: ShipInfo;
   images: ReportImage[];
-  imagesPerPage: 2 | 4 | 6;
+  imagesPerPage: 2 | 4 | 6 | 8;
 }
 
 const EMPTY_IMAGE_FALLBACK =
@@ -145,17 +145,33 @@ function buildCoverPage(
 function buildPhotoPage(
   chunk: ReportImage[],
   imageDataUris: string[],
-  imagesPerPage: 2 | 4 | 6
+  imagesPerPage: 2 | 4 | 6 | 8
 ): string {
   const getGridColumns = (value: number) => {
     if (value === 2) return "1fr";
     if (value === 4) return "1fr 1fr";
     if (value === 6) return "1fr 1fr";
+    if (value === 8) return "1fr 1fr";
     return "1fr";
   };
 
-  const imageHeight =
-    imagesPerPage === 2 ? "420px" : imagesPerPage === 4 ? "240px" : "180px";
+  const getGridRows = (value: number) => {
+    if (value === 2) return "1fr 1fr";
+    if (value === 4) return "1fr 1fr";
+    if (value === 6) return "1fr 1fr 1fr";
+    if (value === 8) return "1fr 1fr 1fr 1fr";
+    return "1fr";
+  };
+
+  const getImageHeight = (value: number) => {
+    if (value === 2) return "420px";
+    if (value === 4) return "260px";
+    if (value === 6) return "190px";
+    if (value === 8) return "140px";
+    return "140px";
+  };
+
+  const imageHeight = getImageHeight(imagesPerPage);
 
   const cards = (chunk || [])
     .map((img, index) => {
@@ -185,8 +201,14 @@ function buildPhotoPage(
                   display: flex; align-items: center; justify-content: center; color: #6b7280;">No photo</div>`
           }
           <div style="
-            font-size: 11px;
-            margin-top: 6px;
+            font-size: 10px;
+            margin-top: 8px;
+            padding: 0 4px;
+            line-height: 1.4;
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
           ">
             ${escapeHtml(desc || "-")}
           </div>
@@ -195,13 +217,46 @@ function buildPhotoPage(
     })
     .join("");
 
+  const placeholders = Math.max(0, imagesPerPage - chunk.length);
+  const placeholdersHtml = Array(placeholders).fill('<div></div>').join("");
+
+  if (imagesPerPage === 2) {
+    return `
+      <div style="
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        height: 100%;
+      ">
+        <div style="
+          display: grid;
+          grid-template-columns: ${getGridColumns(imagesPerPage)};
+          grid-template-rows: ${getGridRows(imagesPerPage)};
+          gap: 12px;
+        ">
+          ${cards}
+          ${placeholdersHtml}
+        </div>
+      </div>
+    `;
+  }
+
   return `
     <div style="
-      display: grid;
-      grid-template-columns: ${getGridColumns(imagesPerPage)};
+      display: flex;
+      flex-direction: column;
       gap: 16px;
+      padding-top: 24px;
+      padding-bottom: 24px;
     ">
-      ${cards}
+      <div style="
+        display: grid;
+        grid-template-columns: ${getGridColumns(imagesPerPage)};
+        gap: 12px;
+      ">
+        ${cards}
+        ${placeholdersHtml}
+      </div>
     </div>
   `;
 }
@@ -301,7 +356,9 @@ async function buildPdfHtml(options: GeneratePdfOptions): Promise<string> {
           box-sizing: border-box;
           display: flex;
           flex-direction: column;
-          justify-content: flex-start;
+          break-inside: avoid;
+          page-break-inside: avoid;
+          overflow: hidden;
         ">
           ${page}
         </div>
