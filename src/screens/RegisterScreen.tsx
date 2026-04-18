@@ -1,6 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import * as SecureStore from "expo-secure-store";
 import React, { useMemo, useRef } from "react";
 import {
     Animated,
@@ -15,12 +14,12 @@ import {
 import BrandWatermark from "../components/BrandWatermark";
 import Input from "../components/Input";
 import PrimaryButton from "../components/PrimaryButton";
-import { registerUser } from "../services/auth.service";
+import { useAuth } from "../context/AuthContext";
 import { COLORS } from "../theme/colors";
 import { isEmailValid, minLen } from "../utils/validators";
 
 export default function RegisterScreen({ navigation }: any) {
-  const [isLoading, setIsLoading] = React.useState(false);
+  const { register, isLoading } = useAuth();
   const [fullName, setFullName] = React.useState("");
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
@@ -61,15 +60,9 @@ export default function RegisterScreen({ navigation }: any) {
     if (!validate()) return;
 
     try {
-      setIsLoading(true);
-      await registerUser(email.trim(), password, fullName.trim());
-      await SecureStore.setItemAsync("name", fullName.trim() || "User");
-      await SecureStore.setItemAsync("email", email.trim());
-      navigation.navigate("Login");
+      await register(fullName.trim(), email.trim(), password);
     } catch (err: any) {
       console.log("Auth error:", err?.response?.data || err?.message);
-    } finally {
-      setIsLoading(false);
     }
   }
 

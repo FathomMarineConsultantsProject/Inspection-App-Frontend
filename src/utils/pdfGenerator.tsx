@@ -1,7 +1,6 @@
 import * as FileSystem from "expo-file-system/legacy";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
-
 export interface ReportImage {
   uri: string;
   description: string;
@@ -21,7 +20,7 @@ export interface ShipInfo {
 export interface GeneratePdfOptions {
   shipInfo: ShipInfo;
   images: ReportImage[];
-  imagesPerPage: 2 | 4 | 6;
+  imagesPerPage: 2 | 4 | 6 | 8;
 }
 
 const EMPTY_IMAGE_FALLBACK =
@@ -73,6 +72,129 @@ function escapeHtml(value?: unknown): string {
     .replace(/'/g, "&#039;");
 }
 
+function buildPhotoPage(
+  chunk: ReportImage[],
+  imageDataUris: string[],
+  imagesPerPage: 2 | 4 | 6 | 8
+): string {
+  const getGridColumns = (value: number) => {
+    if (value === 2) return "1fr";
+    return "1fr 1fr";
+  };
+
+  const getGridRows = (value: number) => {
+    if (value === 2) return "1fr 1fr";
+    if (value === 4) return "1fr 1fr";
+    if (value === 6) return "1fr 1fr 1fr";
+    if (value === 8) return "1fr 1fr 1fr 1fr";
+    return "1fr";
+  };
+
+  // 🔥 BETTER IMAGE SIZES
+  const getImageHeight = (value: number) => {
+    if (value === 2) return "420px";
+    if (value === 4) return "260px";
+    if (value === 6) return "210px"; // increased
+    if (value === 8) return "160px"; // increased
+    return "140px";
+  };
+
+  const imageHeight = getImageHeight(imagesPerPage);
+  const getVerticalPadding = (value: number) => {
+    if (value === 4) return "80px";
+    if (value === 6) return "60px";
+    if (value === 8) return "40px";
+    return "60px";
+  };
+
+  const cards = (chunk || [])
+    .map((img, index) => {
+      const imageUri = imageDataUris[index] || EMPTY_IMAGE_FALLBACK;
+      const description = typeof img?.description === "string" ? img.description : "";
+      const desc = (description || "").trim();
+
+      return `
+        <div style="
+          background: #fff;
+          border: 1px solid #e5e7eb;
+          padding: 8px;
+          display: flex;
+          flex-direction: column;
+          border-radius:8px;
+        ">
+          <img src="${imageUri}" style="
+            width:100%;
+            height:${imageHeight};
+            object-fit:cover;
+            border-radius:6px;
+          "/>
+          <div style="
+            font-size:10px;
+            margin-top:8px;
+            padding:0 4px;
+            line-height:1.4;
+            overflow:hidden;
+            display:-webkit-box;
+            -webkit-line-clamp:2;
+            -webkit-box-orient:vertical;
+          ">
+            ${escapeHtml(desc || "-")}
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+
+  const placeholders = Math.max(0, imagesPerPage - chunk.length);
+  const placeholdersHtml = Array(placeholders).fill("<div></div>").join("");
+
+  // ✅ KEEP 2 IMAGE PERFECT
+  if (imagesPerPage === 2) {
+    return `
+      <div style="
+        display:flex;
+        flex-direction:column;
+        justify-content:center;
+        height:100%;
+      ">
+        <div style="
+          display:grid;
+          grid-template-columns:${getGridColumns(imagesPerPage)};
+          grid-template-rows:${getGridRows(imagesPerPage)};
+          gap:12px;
+        ">
+          ${cards}
+          ${placeholdersHtml}
+        </div>
+      </div>
+    `;
+  }
+
+  return `
+    <div style="
+      width:100%;
+      padding-top:${getVerticalPadding(imagesPerPage)};
+      padding-bottom:${getVerticalPadding(imagesPerPage)};
+      display:flex;
+      justify-content:center;
+    ">
+      <div style="
+        width:100%;
+        max-width:720px;
+      ">
+        <div style="
+          display:grid;
+          grid-template-columns:${getGridColumns(imagesPerPage)};
+          gap:16px;
+        ">
+          ${cards}
+          ${placeholdersHtml}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function buildCoverPage(
   shipInfo: ShipInfo,
   logoDataUri: string,
@@ -92,8 +214,8 @@ function buildCoverPage(
     shipPhotoDataUri !== EMPTY_IMAGE_FALLBACK
       ? shipPhotoDataUri
       : firstImageDataUri !== EMPTY_IMAGE_FALLBACK
-      ? firstImageDataUri
-      : "";
+        ? firstImageDataUri
+        : "";
 
   return `
     <div style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; color:#1f2937;">
@@ -142,70 +264,6 @@ function buildCoverPage(
   `;
 }
 
-function buildPhotoPage(
-  chunk: ReportImage[],
-  imageDataUris: string[],
-  imagesPerPage: 2 | 4 | 6
-): string {
-  const getGridColumns = (value: number) => {
-    if (value === 2) return "1fr";
-    if (value === 4) return "1fr 1fr";
-    if (value === 6) return "1fr 1fr";
-    return "1fr";
-  };
-
-  const imageHeight =
-    imagesPerPage === 2 ? "420px" : imagesPerPage === 4 ? "240px" : "180px";
-
-  const cards = (chunk || [])
-    .map((img, index) => {
-      const imageUri = imageDataUris[index] || EMPTY_IMAGE_FALLBACK;
-      const description = typeof img?.description === "string" ? img.description : "";
-      const desc = (description || "").trim();
-
-      return `
-        <div style="
-          background: #fff;
-          border: 1px solid #e5e7eb;
-          padding: 8px;
-          display: flex;
-          flex-direction: column;
-          border-radius:8px;
-          box-sizing:border-box;
-        ">
-          ${
-            imageUri !== EMPTY_IMAGE_FALLBACK
-              ? `<img src="${imageUri}" style="
-                  width:100%;
-                  height: ${imageHeight};
-                  object-fit:cover;
-                  border-radius:6px;
-                " alt="Inspection Photo ${index + 1}" />`
-              : `<div style="width: 100%; height: ${imageHeight}; border-radius: 6px; background: #f3f4f6;
-                  display: flex; align-items: center; justify-content: center; color: #6b7280;">No photo</div>`
-          }
-          <div style="
-            font-size: 11px;
-            margin-top: 6px;
-          ">
-            ${escapeHtml(desc || "-")}
-          </div>
-        </div>
-      `;
-    })
-    .join("");
-
-  return `
-    <div style="
-      display: grid;
-      grid-template-columns: ${getGridColumns(imagesPerPage)};
-      gap: 16px;
-    ">
-      ${cards}
-    </div>
-  `;
-}
-
 function buildStyles(): string {
   return `
     * {
@@ -249,19 +307,6 @@ function buildHtmlDocument(content: string): string {
 async function buildPdfHtml(options: GeneratePdfOptions): Promise<string> {
   const { shipInfo, images, imagesPerPage } = options;
 
-  images.forEach((img, index) => {
-    const uri = img?.uri || "";
-    const isSupported =
-      uri.startsWith("file://") ||
-      uri.startsWith("data:image/") ||
-      uri.startsWith("http://") ||
-      uri.startsWith("https://");
-
-    if (!isSupported) {
-      console.log(`UNSUPPORTED IMAGE URI FORMAT at index ${index}:`, uri);
-    }
-  });
-
   const [logoDataUri, shipPhotoDataUri, ...photoDataUris] = await Promise.all([
     uriToBase64DataUri(shipInfo.companyLogoUri ?? ""),
     uriToBase64DataUri(shipInfo.shipPhotoUri ?? ""),
@@ -269,7 +314,6 @@ async function buildPdfHtml(options: GeneratePdfOptions): Promise<string> {
   ]);
 
   const totalPhotos = images.length;
-
   const coverHtml = buildCoverPage(
     {
       ...shipInfo,
@@ -281,7 +325,6 @@ async function buildPdfHtml(options: GeneratePdfOptions): Promise<string> {
   );
 
   const imagePages = chunkArray(images, imagesPerPage);
-
   const photoPages = imagePages.map((pageImages, pageIndex) => {
     const pageUris = photoDataUris.slice(
       pageIndex * imagesPerPage,
@@ -292,8 +335,8 @@ async function buildPdfHtml(options: GeneratePdfOptions): Promise<string> {
 
   const pages = [coverHtml, ...photoPages];
   const html = pages
-    .map((page) => {
-      return `
+    .map(
+      (page) => `
         <div style="
           width: 100%;
           height: 100%;
@@ -301,15 +344,16 @@ async function buildPdfHtml(options: GeneratePdfOptions): Promise<string> {
           box-sizing: border-box;
           display: flex;
           flex-direction: column;
-          justify-content: flex-start;
+          break-inside: avoid;
+          page-break-inside: avoid;
+          overflow: hidden;
         ">
           ${page}
         </div>
-      `;
-    })
+      `
+    )
     .join("");
 
-  console.log("FINAL HTML READY");
   return buildHtmlDocument(html);
 }
 
@@ -327,7 +371,6 @@ function buildSafeFileName(shipName: unknown, date: unknown): string {
 export async function generatePdfUri(
   options: GeneratePdfOptions
 ): Promise<string> {
-  console.log("GENERATING HTML...");
   const html = await buildPdfHtml(options);
 
   const { uri } = await Print.printToFileAsync({
@@ -335,13 +378,11 @@ export async function generatePdfUri(
     base64: false,
   });
   const fileUri = uri;
-  console.log("PDF URI:", fileUri);
 
   const fileName = buildSafeFileName(
     options.shipInfo.shipName,
     options.shipInfo.date
   );
-
   const destinationUri = `${FileSystem.cacheDirectory}${fileName}`;
 
   try {
@@ -351,7 +392,6 @@ export async function generatePdfUri(
     }
   } catch {}
 
-  console.log("Moving file...");
   await FileSystem.moveAsync({
     from: fileUri,
     to: destinationUri,
@@ -363,30 +403,18 @@ export async function generatePdfUri(
 export async function generateAndSharePdf(
   options: GeneratePdfOptions
 ): Promise<void> {
-  try {
-    console.log("START PDF GENERATION");
+  const pdfUri = await generatePdfUri(options);
+  const canShare = await Sharing.isAvailableAsync();
 
-    const pdfUri = await generatePdfUri(options);
-
-    console.log("PDF URI:", pdfUri);
-
-    const canShare = await Sharing.isAvailableAsync();
-
-    if (!canShare) {
-      throw new Error(
-        `Sharing is not available on this device. PDF saved at: ${pdfUri}`
-      );
-    }
-
-    await Sharing.shareAsync(pdfUri, {
-      mimeType: "application/pdf",
-      dialogTitle: "Share Inspection Report",
-      UTI: "com.adobe.pdf",
-    });
-
-    console.log("SHARE SUCCESS");
-  } catch (err) {
-    console.log("GENERATION FAILED:", err);
-    throw err;
+  if (!canShare) {
+    throw new Error(
+      `Sharing is not available on this device. PDF saved at: ${pdfUri}`
+    );
   }
+
+  await Sharing.shareAsync(pdfUri, {
+    mimeType: "application/pdf",
+    dialogTitle: "Share Inspection Report",
+    UTI: "com.adobe.pdf",
+  });
 }

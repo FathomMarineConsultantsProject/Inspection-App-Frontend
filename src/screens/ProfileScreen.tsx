@@ -1,6 +1,8 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from "expo-image-picker";
 import * as SecureStore from "expo-secure-store";
-import React, { useEffect, useState } from "react";
+import { useFocusEffect } from "@react-navigation/native";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   Alert,
   Image,
@@ -30,6 +32,7 @@ type Profile = {
 };
 
 const placeholderImage = require("../../assets/images/logo.png");
+const USER_STORAGE_KEY = "user";
 
 export default function ProfileScreen() {
   const { logout } = useAuth();
@@ -47,44 +50,77 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(false);
   const [pickerVisible, setPickerVisible] = useState(false);
 
-  const getToken = async () =>
-    (await SecureStore.getItemAsync("token")) ||
-    (await SecureStore.getItemAsync("access_token"));
-
-  const fetchProfile = async () => {
+  const persistUser = async (data: Profile) => {
     try {
-      const token = await getToken();
+      await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(data));
+    } catch {
+      // ignore
+    }
+  };
 
-      if (!token) {
-        console.log("No token found");
-        return;
-      }
+  const loadUserFromStorage = useCallback(async () => {
+    try {
+      const raw = await AsyncStorage.getItem(USER_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Partial<Profile>;
+      setProfile((prev) => ({
+        ...prev,
+        ...parsed,
+        full_name: parsed.full_name ?? prev.full_name,
+        email: parsed.email ?? prev.email,
+        phone: parsed.phone ?? prev.phone,
+        location: parsed.location ?? prev.location,
+        profile_image: parsed.profile_image ?? prev.profile_image,
+      }));
+    } catch {
+      // ignore
+    }
+  }, []);
 
-      const res = await API.get("/profile", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+  const fetchProfile = useCallback(async () => {
+    try {
+      const res = await API.get("/profile");
 
       console.log("PROFILE API RESPONSE:", res.data);
 
       const data = res.data;
 
-      setProfile({
+      const next: Profile = {
         full_name: data.full_name || "",
         email: data.email || "",
         phone: data.phone || "",
         location: data.location || "",
         profile_image: data.profile_image || "",
-      });
+      };
+
+      setProfile(next);
+      await persistUser(next);
+
+      await SecureStore.setItemAsync("user_name", data.full_name || "");
+      await SecureStore.setItemAsync("email", data.email || "");
     } catch (err: any) {
       console.log("PROFILE FETCH ERROR:", err?.response?.data || err?.message);
+      await loadUserFromStorage();
+      const [savedName, savedEmail] = await Promise.all([
+        SecureStore.getItemAsync("user_name"),
+        SecureStore.getItemAsync("email"),
+      ]);
+      if (savedName || savedEmail) {
+        setProfile((prev) => ({
+          ...prev,
+          full_name: savedName || prev.full_name,
+          email: savedEmail || prev.email,
+        }));
+      }
     }
-  };
+  }, [loadUserFromStorage]);
 
-  useEffect(() => {
-    fetchProfile();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      void loadUserFromStorage();
+      void fetchProfile();
+    }, [loadUserFromStorage, fetchProfile])
+  );
 
   useEffect(() => {
     (async () => {
@@ -153,12 +189,6 @@ export default function ProfileScreen() {
   const handleSaveProfile = async () => {
     try {
       setLoading(true);
-      const token = await getToken();
-
-      if (!token) {
-        Alert.alert("User not authenticated");
-        return;
-      }
 
       const payload = {
         full_name: editProfile.full_name,
@@ -169,11 +199,7 @@ export default function ProfileScreen() {
 
       console.log("SENDING PAYLOAD:", payload);
 
-      await API.put(
-        "/profile",
-        payload,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      await API.put("/profile", payload);
 
       await fetchProfile();
       setVisible(false);
