@@ -6,6 +6,8 @@ import {
   Pressable,
   StyleSheet,
   Platform,
+  NativeSyntheticEvent,
+  TextInputFocusEventData,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "../theme/colors";
@@ -21,6 +23,9 @@ type Props = {
   multiline?: boolean;
   leftIcon?: React.ComponentProps<typeof Ionicons>["name"];
   secureTextEntry?: boolean;
+  returnKeyType?: "done" | "next" | "go" | "search" | "send";
+  onFocus?: (e: NativeSyntheticEvent<TextInputFocusEventData>) => void;
+  onBlur?: (e: NativeSyntheticEvent<TextInputFocusEventData>) => void;
 };
 
 export default function Input({
@@ -34,6 +39,9 @@ export default function Input({
   multiline = false,
   leftIcon,
   secureTextEntry = false,
+  returnKeyType = "done",
+  onFocus,
+  onBlur,
 }: Props) {
   const [focused, setFocused] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -69,12 +77,20 @@ export default function Input({
           keyboardType={keyboardType}
           multiline={multiline}
           secureTextEntry={isPassword ? !showPassword : false}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
+          onFocus={(e) => {
+            setFocused(true);
+            onFocus?.(e);
+          }}
+          onBlur={(e) => {
+            setFocused(false);
+            onBlur?.(e);
+          }}
           style={[styles.input, multiline && styles.multiline]}
           underlineColorAndroid="transparent"
           selectionColor={COLORS.primary}
           cursorColor={COLORS.primary}
+          returnKeyType={returnKeyType}
+          blurOnSubmit={!multiline}
         />
 
         {isPassword ? (
@@ -117,7 +133,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
     borderRadius: 16,
     paddingHorizontal: 14,
-    paddingVertical: Platform.OS === "android" ? 8 : 10,
+    minHeight: 58,
+    paddingVertical: Platform.OS === "android" ? 0 : 0,
   },
 
   inputWrapFocused: {
@@ -136,13 +153,14 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: COLORS.text,
-    paddingVertical: 6,
+    height: 56,
+    paddingVertical: 0,
   },
 
   multiline: {
     minHeight: 90,
     textAlignVertical: "top",
-    paddingVertical: 10,
+    paddingVertical: 12,
   },
 
   eyeButton: {

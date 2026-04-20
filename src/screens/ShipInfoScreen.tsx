@@ -1,9 +1,8 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Image,
   Keyboard,
-  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -12,25 +11,29 @@ import {
   Text,
   TouchableWithoutFeedback,
   View,
+  NativeSyntheticEvent,
+  TextInputFocusEventData,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import Input from "../components/Input";
 import PrimaryButton from "../components/PrimaryButton";
 
 export default function ShipInfoScreen({ navigation }: any) {
+  const scrollRef = useRef<ScrollView>(null);
+
   const [shipName, setShipName] = useState("");
   const [shipType, setShipType] = useState("");
   const [inspectorName, setInspectorName] = useState("");
-  const [portName,setPortName]=useState("")
+  const [portName, setPortName] = useState("");
 
   const [shipPhotoUri, setShipPhotoUri] = useState<string | null>(null);
   const [companyLogoUri, setCompanyLogoUri] = useState<string | null>(null);
 
-  // ✅ Date
   const [inspectionDate, setInspectionDate] = useState<Date>(new Date());
   const [tempDate, setTempDate] = useState<Date>(new Date());
   const [showModal, setShowModal] = useState(false);
@@ -43,7 +46,6 @@ export default function ShipInfoScreen({ navigation }: any) {
     });
   }, [inspectionDate]);
 
-  // ✅ Reset on focus (dev-friendly)
   useFocusEffect(
     useCallback(() => {
       setShipName("");
@@ -57,6 +59,15 @@ export default function ShipInfoScreen({ navigation }: any) {
       setShowModal(false);
     }, [])
   );
+
+  const scrollToFocusedInput = (_event: NativeSyntheticEvent<TextInputFocusEventData>, y: number) => {
+    setTimeout(() => {
+      scrollRef.current?.scrollTo({
+        y,
+        animated: true,
+      });
+    }, 180);
+  };
 
   async function ensureGalleryPermission() {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -78,7 +89,9 @@ export default function ShipInfoScreen({ navigation }: any) {
       aspect: [4, 3],
     });
 
-    if (!result.canceled) setShipPhotoUri(result.assets[0].uri);
+    if (!result.canceled) {
+      setShipPhotoUri(result.assets[0].uri);
+    }
   }
 
   async function pickCompanyLogo() {
@@ -92,7 +105,9 @@ export default function ShipInfoScreen({ navigation }: any) {
       aspect: [1, 1],
     });
 
-    if (!result.canceled) setCompanyLogoUri(result.assets[0].uri);
+    if (!result.canceled) {
+      setCompanyLogoUri(result.assets[0].uri);
+    }
   }
 
   function openDateModal() {
@@ -114,7 +129,6 @@ export default function ShipInfoScreen({ navigation }: any) {
     if (!shipType.trim()) return "Ship type is required";
     if (!inspectorName.trim()) return "Inspector name is required";
     if (!portName.trim()) return "Port name is required";
-
     return null;
   }
 
@@ -130,144 +144,163 @@ export default function ShipInfoScreen({ navigation }: any) {
         shipName: shipName.trim(),
         shipType: shipType.trim(),
         inspectorName: inspectorName.trim(),
-        portName:portName.trim(),
+        portName: portName.trim(),
         shipPhotoUri,
         companyLogoUri,
-        inspectionDate: inspectionDate.toISOString(), // backend friendly
+        inspectionDate: inspectionDate.toISOString(),
       },
     });
   }
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={80}
-    >
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+<SafeAreaView style={styles.safeArea} edges={["left", "right", "bottom"]}>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
         <ScrollView
-          contentContainerStyle={[styles.container, { flexGrow: 1, paddingBottom: 140 }]}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="interactive"
-        >
-      {/* Title row + small date chip */}
-      <View style={styles.headerRow}>
-        <Text style={styles.title}>Ship Details</Text>
+  ref={scrollRef}
+  style={styles.flex}
+  contentContainerStyle={styles.container}
+  keyboardShouldPersistTaps="handled"
+  keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+  showsVerticalScrollIndicator={false}
+  contentInsetAdjustmentBehavior="never"
+>
+          <View style={styles.headerRow}>
+            <Text style={styles.title}>Ship Details</Text>
 
-        <Pressable
-          onPress={openDateModal}
-          style={styles.dateChip}
-          hitSlop={10}
-        >
-          <Ionicons name="calendar-outline" size={14} color="#111" />
-          <Text style={styles.dateChipText}>{dateLabel}</Text>
-        </Pressable>
-      </View>
-
-      <Modal
-        visible={showModal}
-        transparent
-        animationType="fade"
-        onRequestClose={closeDateModal}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalContainer}>
-            <DateTimePicker
-              value={tempDate}
-              mode="date"
-              display={Platform.OS === "ios" ? "inline" : "default"}
-              themeVariant="light"
-              onChange={(_, selectedDate) => {
-                if (selectedDate) {
-                  setTempDate(selectedDate);
-                }
-              }}
-            />
-
-            <View style={styles.modalActions}>
-              <Pressable onPress={closeDateModal} style={styles.cancelButton}>
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </Pressable>
-              <Pressable onPress={confirmDateSelection} style={styles.confirmButton}>
-                <Text style={styles.confirmButtonText}>Confirm</Text>
-              </Pressable>
-            </View>
+            <Pressable onPress={openDateModal} style={styles.dateChip} hitSlop={10}>
+              <Ionicons name="calendar-outline" size={14} color="#111" />
+              <Text style={styles.dateChipText}>{dateLabel}</Text>
+            </Pressable>
           </View>
-        </View>
-      </Modal>
 
-      {/* Two boxes side-by-side */}
-      <View style={styles.photoRow}>
-        <Pressable onPress={pickShipPhoto} style={styles.photoBox}>
-          {shipPhotoUri ? (
-            <Image source={{ uri: shipPhotoUri }} resizeMode="cover" style={styles.photoImg} />
-          ) : (
-            <Text style={styles.photoText}>+ Ship Photo</Text>
-          )}
-        </Pressable>
+          <Modal
+            visible={showModal}
+            transparent
+            animationType="fade"
+            onRequestClose={closeDateModal}
+          >
+            <View style={styles.modalBackdrop}>
+              <View style={styles.modalContainer}>
+                <DateTimePicker
+                  value={tempDate}
+                  mode="date"
+                  display={Platform.OS === "ios" ? "inline" : "default"}
+                  themeVariant="light"
+                  onChange={(_, selectedDate) => {
+                    if (selectedDate) {
+                      setTempDate(selectedDate);
+                    }
+                  }}
+                />
 
-        <View style={{ width: 12 }} />
+                <View style={styles.modalActions}>
+                  <Pressable onPress={closeDateModal} style={styles.cancelButton}>
+                    <Text style={styles.cancelButtonText}>Cancel</Text>
+                  </Pressable>
+                  <Pressable onPress={confirmDateSelection} style={styles.confirmButton}>
+                    <Text style={styles.confirmButtonText}>Confirm</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          </Modal>
 
-        <Pressable onPress={pickCompanyLogo} style={styles.photoBox}>
-          {companyLogoUri ? (
-            <Image source={{ uri: companyLogoUri }} resizeMode="cover" style={styles.photoImg} />
-          ) : (
-            <Text style={styles.photoText}>+ Company Logo</Text>
-          )}
-        </Pressable>
-      </View>
+          <View style={styles.photoRow}>
+            <Pressable onPress={pickShipPhoto} style={styles.photoBox}>
+              {shipPhotoUri ? (
+                <Image source={{ uri: shipPhotoUri }} resizeMode="cover" style={styles.photoImg} />
+              ) : (
+                <Text style={styles.photoText}>+ Ship Photo</Text>
+              )}
+            </Pressable>
 
-      <Input
-        label="Ship Name"
-        value={shipName}
-        onChangeText={setShipName}
-        placeholder="e.g., MV Ocean Star"
-        autoCapitalize="words"
-      />
+            <View style={styles.photoSpacer} />
 
-      <Input
-        label="Ship Type"
-        value={shipType}
-        onChangeText={setShipType}
-        placeholder="e.g., Cargo, Tanker, Passenger"
-        autoCapitalize="words"
-      />
+            <Pressable onPress={pickCompanyLogo} style={styles.photoBox}>
+              {companyLogoUri ? (
+                <Image source={{ uri: companyLogoUri }} resizeMode="cover" style={styles.photoImg} />
+              ) : (
+                <Text style={styles.photoText}>+ Company Logo</Text>
+              )}
+            </Pressable>
+          </View>
 
-      <Input
-        label="Inspector Name"
-        value={inspectorName}
-        onChangeText={setInspectorName}
-        placeholder="e.g., John Doe"
-        autoCapitalize="words"
-      />
+          <Input
+            label="Ship Name"
+            value={shipName}
+            onChangeText={setShipName}
+            placeholder="e.g., MV Ocean Star"
+            autoCapitalize="words"
+            returnKeyType="next"
+            onFocus={(e) => scrollToFocusedInput(e, 120)}
+          />
 
-      <Input
-        label="Port Name"
-        value={portName}
-        onChangeText={setPortName}
-        placeholder="e.g., Port name"
-        autoCapitalize="words"
-      />
+          <Input
+            label="Ship Type"
+            value={shipType}
+            onChangeText={setShipType}
+            placeholder="e.g., Cargo, Tanker, Passenger"
+            autoCapitalize="words"
+            returnKeyType="next"
+            onFocus={(e) => scrollToFocusedInput(e, 220)}
+          />
 
-      <PrimaryButton title="Next: Create Report" onPress={onNext} />
+          <Input
+            label="Inspector Name"
+            value={inspectorName}
+            onChangeText={setInspectorName}
+            placeholder="e.g., John Doe"
+            autoCapitalize="words"
+            returnKeyType="next"
+            onFocus={(e) => scrollToFocusedInput(e, 320)}
+          />
+
+          <Input
+            label="Port Name"
+            value={portName}
+            onChangeText={setPortName}
+            placeholder="e.g., Port name"
+            autoCapitalize="words"
+            returnKeyType="done"
+            onFocus={(e) => scrollToFocusedInput(e, 420)}
+          />
+
+          <View style={styles.buttonWrap}>
+            <PrimaryButton title="Next: Create Report" onPress={onNext} />
+          </View>
         </ScrollView>
       </TouchableWithoutFeedback>
-    </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 16, paddingBottom: 30 },
-
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 12,
+  flex: {
+    flex: 1,
   },
-  title: { fontSize: 24, fontWeight: "800" },
+  safeArea: {
+    flex: 1,
+    backgroundColor: "#F7F9FC",
+  },
+container: {
+  paddingHorizontal: 16,
+  paddingTop: 0,
+  paddingBottom: 140,
+  flexGrow: 1,
+},
 
-  // ✅ Small classy chip
+headerRow: {
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "space-between",
+  marginTop: 10,
+  marginBottom: 16,
+},
+  title: {
+    fontSize: 24,
+    fontWeight: "800",
+    color: "#111827",
+  },
   dateChip: {
     flexDirection: "row",
     alignItems: "center",
@@ -275,7 +308,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 8,
     borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.85)",
+    backgroundColor: "rgba(255,255,255,0.95)",
     borderWidth: 1,
     borderColor: "rgba(0,0,0,0.08)",
   },
@@ -328,23 +361,36 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "700",
   },
-
   photoRow: {
     flexDirection: "row",
     width: "100%",
-    marginBottom: 16,
+    marginBottom: 18,
+  },
+  photoSpacer: {
+    width: 12,
   },
   photoBox: {
     flex: 1,
     borderWidth: 1,
-    borderColor: "#ccc",
+    borderColor: "#d1d5db",
     borderStyle: "dashed",
     borderRadius: 14,
     padding: 12,
     alignItems: "center",
     justifyContent: "center",
     minHeight: 160,
+    backgroundColor: "#fff",
   },
-  photoImg: { width: "100%", height: 140, borderRadius: 12 },
-  photoText: { fontWeight: "700" },
+  photoImg: {
+    width: "100%",
+    height: 140,
+    borderRadius: 12,
+  },
+  photoText: {
+    fontWeight: "700",
+    color: "#111827",
+  },
+  buttonWrap: {
+    marginTop: 8,
+  },
 });
