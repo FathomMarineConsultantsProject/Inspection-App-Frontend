@@ -238,12 +238,6 @@ export default function ProfileScreen() {
         <PrimaryButton title="Edit Profile" onPress={openModal} />
       </View>
 
-      <Text style={styles.section}>Recent Inspections</Text>
-
-      <View style={styles.cardSmall}>
-        <Text>Inspection Placeholder</Text>
-      </View>
-
       <View style={{ marginTop: 16 }}>
         <PrimaryButton title="Logout" onPress={logout} />
       </View>
@@ -383,15 +377,6 @@ const styles = StyleSheet.create({
   info: { marginLeft: 14, justifyContent: "center" },
   name: { fontSize: 18, fontWeight: "600" },
   meta: { fontSize: 14, color: "#666", marginTop: 2 },
-
-  section: { marginTop: 20, fontWeight: "600", fontSize: 15 },
-
-  cardSmall: {
-    padding: 12,
-    backgroundColor: "#eee",
-    borderRadius: 10,
-    marginTop: 10,
-  },
 
   modal: {
     flex: 1,

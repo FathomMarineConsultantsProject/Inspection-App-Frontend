@@ -153,9 +153,21 @@ export default function HomeScreen({ navigation }: any) {
                         pressed && styles.viewBtnPressed,
                       ]}
                       onPress={() => {
+                        const validInspection = {
+                          ...inspection,
+                          report: {
+                            ...inspection.report,
+                            images: (inspection.report?.images || []).filter(
+                              (img) => img && typeof img.uri === "string",
+                            ),
+                          },
+                        };
                         navigation.navigate("ReportPreview", {
-                          ship: inspection.ship,
-                          report: inspection.report,
+                          inspectionId: inspection.id,
+                          inspectionCreatedAt: inspection.createdAt,
+                          ship: validInspection.ship,
+                          images: validInspection.report.images,
+                          report: validInspection.report,
                         });
                       }}
                     >
@@ -229,9 +241,21 @@ const styles = StyleSheet.create({
   },
   createCard: {
     backgroundColor: "#2563eb",
-    borderRadius: 16,
-    paddingVertical: 18,
-    paddingHorizontal: 16,
+    borderRadius: 20,
+    paddingVertical: 20,
+    paddingHorizontal: 18,
+    ...Platform.select({
+      ios: {
+        shadowColor: "#1d4ed8",
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.16,
+        shadowRadius: 12,
+      },
+      android: {
+        elevation: 4,
+      },
+      default: {},
+    }),
   },
   createTitle: {
     color: "#ffffff",
@@ -244,8 +268,8 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   recentSection: {
-    marginTop: 8,
-    gap: 12,
+    marginTop: 10,
+    gap: 14,
   },
   sectionTitle: {
     fontSize: 18,
@@ -254,31 +278,31 @@ const styles = StyleSheet.create({
   },
   inspectionCard: {
     backgroundColor: "#ffffff",
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 12,
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 0,
     ...Platform.select({
       ios: {
         shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.08,
-        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.09,
+        shadowRadius: 10,
       },
       android: {
-        elevation: 3,
+        elevation: 4,
       },
       default: {},
     }),
   },
   inspectionShipName: {
     fontSize: 17,
-    fontWeight: "600",
+    fontWeight: "700",
     color: "#111827",
   },
   inspectionMeta: {
     marginTop: 6,
-    fontSize: 14,
-    color: "#9ca3af",
+    fontSize: 12,
+    color: "#6b7280",
     fontWeight: "500",
   },
   actionRow: {

@@ -16,7 +16,9 @@ import {
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { CameraView, useCameraPermissions } from "expo-camera";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import PrimaryButton from "../components/PrimaryButton";
+import { persistImage } from "../utils/persistImage";
 import type { Inspection } from "../utils/inspectionStorage";
 import { addToSyncQueue, parseInspectionsFromStorage } from "../utils/inspectionStorage";
 
@@ -41,6 +43,7 @@ function makeId() {
 
 export default function CreateReportScreen({ navigation, route }: Props) {
   const { ship } = route.params;
+  const insets = useSafeAreaInsets();
 
   const [items, setItems] = useState<ReportImage[]>([]);
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -143,7 +146,7 @@ export default function CreateReportScreen({ navigation, route }: Props) {
     );
   }
 
-  async function handleEditCrop(item: ReportImage) {
+  async function handleReplaceImage(item: ReportImage) {
     try {
       if (!canUseGallery) {
         Alert.alert(
@@ -155,15 +158,16 @@ export default function CreateReportScreen({ navigation, route }: Props) {
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        quality: 1,
+        quality: 0.8,
       });
 
       if (!result.canceled && result.assets[0]) {
         const newUri = result.assets[0].uri;
         setItems((prev) =>
           prev.map((img) =>
-            img.id === item.id ? { ...img, croppedUri: newUri } : img,
+            img.id === item.id
+              ? { ...img, uri: newUri, originalUri: newUri }
+              : img,
           ),
         );
       }
@@ -178,19 +182,55 @@ export default function CreateReportScreen({ navigation, route }: Props) {
       return;
     }
 
+    const safeImages = await Promise.all(
+      items.map(async (item) => {
+        const persistedUri = await persistImage(item.uri);
+        const persistedOriginalUri = item.originalUri
+          ? await persistImage(item.originalUri)
+          : undefined;
+        const persistedCroppedUri = item.croppedUri
+          ? await persistImage(item.croppedUri)
+          : undefined;
+
+        return {
+          ...item,
+          uri: persistedUri,
+          originalUri: persistedOriginalUri,
+          croppedUri: persistedCroppedUri,
+        };
+      }),
+    );
+    const cleanedImages = safeImages.filter(
+      (img) => !!img && typeof img.uri === "string",
+    );
+
+    const persistedShipPhotoUri = ship.shipPhotoUri
+      ? await persistImage(ship.shipPhotoUri)
+      : null;
+    const persistedCompanyLogoUri = ship.companyLogoUri
+      ? await persistImage(ship.companyLogoUri)
+      : null;
+    const persistedShip = {
+      ...ship,
+      shipPhotoUri: persistedShipPhotoUri,
+      companyLogoUri: persistedCompanyLogoUri,
+    };
+
+    const inspectionId = Date.now().toString();
+
     try {
       const existing = await AsyncStorage.getItem("inspections");
       const list = parseInspectionsFromStorage(existing);
 
       const now = Date.now();
       const newInspection: Inspection = {
-        id: now.toString(),
+        id: inspectionId,
         createdAt: now,
         updatedAt: now,
-        ship,
+        ship: persistedShip,
         report: {
           imagesPerPage,
-          images: items,
+          images: safeImages,
         },
         status: "completed",
         syncStatus: "pending",
@@ -205,11 +245,16 @@ export default function CreateReportScreen({ navigation, route }: Props) {
       // Storage failure should not block preview / export flow.
     }
 
+    console.log("IMAGES SENT:", cleanedImages);
+
     navigation.navigate("ReportPreview", {
-      ship,
+      inspectionId,
+      inspectionCreatedAt: Number(inspectionId),
+      ship: persistedShip,
+      images: cleanedImages,
       report: {
         imagesPerPage,
-        images: items, // ✅ includes description
+        images: cleanedImages, // ✅ includes description
       },
     });
   }
@@ -239,7 +284,7 @@ export default function CreateReportScreen({ navigation, route }: Props) {
     <KeyboardAvoidingView
       style={{ flex: 1 }}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={80}
+      keyboardVerticalOffset={insets.top + 60}
     >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
         <ScrollView
@@ -296,7 +341,7 @@ export default function CreateReportScreen({ navigation, route }: Props) {
           <View key={item.id} style={styles.gridCard}>
             <View style={styles.gridItem}>
               <Image
-                source={{ uri: item.croppedUri || item.uri }}
+                source={{ uri: item.uri }}
                 resizeMode="cover"
                 style={styles.thumb}
               />
@@ -316,12 +361,14 @@ export default function CreateReportScreen({ navigation, route }: Props) {
               style={styles.descInput}
             />
 
-            <Pressable
-              style={styles.editCropBtn}
-              onPress={() => void handleEditCrop(item)}
-            >
-              <Text style={styles.editCropBtnText}>Edit / Crop</Text>
-            </Pressable>
+            <View style={styles.imageActionRow}>
+              <Pressable
+                style={styles.editCropBtn}
+                onPress={() => void handleReplaceImage(item)}
+              >
+                <Text style={styles.editCropBtnText}>Replace Image</Text>
+              </Pressable>
+            </View>
           </View>
         ))}
       </View>
@@ -451,8 +498,7 @@ const styles = StyleSheet.create({
   },
 
   editCropBtn: {
-    marginTop: 8,
-    alignSelf: "stretch",
+    flex: 1,
     paddingVertical: 8,
     paddingHorizontal: 10,
     borderRadius: 8,
@@ -463,6 +509,11 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#111827",
     fontSize: 13,
+  },
+  imageActionRow: {
+    marginTop: 8,
+    flexDirection: "row",
+    gap: 8,
   },
 
   removeBadge: {

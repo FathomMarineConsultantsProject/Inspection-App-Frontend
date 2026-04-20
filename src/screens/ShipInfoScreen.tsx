@@ -1,8 +1,9 @@
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   Alert,
   Image,
   Keyboard,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -11,20 +12,18 @@ import {
   Text,
   TouchableWithoutFeedback,
   View,
-  NativeSyntheticEvent,
-  TextInputFocusEventData,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import Input from "../components/Input";
 import PrimaryButton from "../components/PrimaryButton";
 
 export default function ShipInfoScreen({ navigation }: any) {
-  const scrollRef = useRef<ScrollView>(null);
+  const insets = useSafeAreaInsets();
 
   const [shipName, setShipName] = useState("");
   const [shipType, setShipType] = useState("");
@@ -59,15 +58,6 @@ export default function ShipInfoScreen({ navigation }: any) {
       setShowModal(false);
     }, [])
   );
-
-  const scrollToFocusedInput = (_event: NativeSyntheticEvent<TextInputFocusEventData>, y: number) => {
-    setTimeout(() => {
-      scrollRef.current?.scrollTo({
-        y,
-        animated: true,
-      });
-    }, 180);
-  };
 
   async function ensureGalleryPermission() {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -153,17 +143,21 @@ export default function ShipInfoScreen({ navigation }: any) {
   }
 
   return (
-<SafeAreaView style={styles.safeArea} edges={["left", "right", "bottom"]}>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={insets.top + 60}
+    >
+      <SafeAreaView style={styles.safeArea} edges={["left", "right", "bottom"]}>
         <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-        <ScrollView
-  ref={scrollRef}
-  style={styles.flex}
-  contentContainerStyle={styles.container}
-  keyboardShouldPersistTaps="handled"
-  keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
-  showsVerticalScrollIndicator={false}
-  contentInsetAdjustmentBehavior="never"
->
+          <ScrollView
+            style={styles.flex}
+            contentContainerStyle={styles.container}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            showsVerticalScrollIndicator={false}
+            contentInsetAdjustmentBehavior="never"
+          >
           <View style={styles.headerRow}>
             <Text style={styles.title}>Ship Details</Text>
 
@@ -232,7 +226,6 @@ export default function ShipInfoScreen({ navigation }: any) {
             placeholder="e.g., MV Ocean Star"
             autoCapitalize="words"
             returnKeyType="next"
-            onFocus={(e) => scrollToFocusedInput(e, 120)}
           />
 
           <Input
@@ -242,7 +235,6 @@ export default function ShipInfoScreen({ navigation }: any) {
             placeholder="e.g., Cargo, Tanker, Passenger"
             autoCapitalize="words"
             returnKeyType="next"
-            onFocus={(e) => scrollToFocusedInput(e, 220)}
           />
 
           <Input
@@ -252,7 +244,6 @@ export default function ShipInfoScreen({ navigation }: any) {
             placeholder="e.g., John Doe"
             autoCapitalize="words"
             returnKeyType="next"
-            onFocus={(e) => scrollToFocusedInput(e, 320)}
           />
 
           <Input
@@ -262,7 +253,6 @@ export default function ShipInfoScreen({ navigation }: any) {
             placeholder="e.g., Port name"
             autoCapitalize="words"
             returnKeyType="done"
-            onFocus={(e) => scrollToFocusedInput(e, 420)}
           />
 
           <View style={styles.buttonWrap}>
@@ -270,7 +260,8 @@ export default function ShipInfoScreen({ navigation }: any) {
           </View>
         </ScrollView>
       </TouchableWithoutFeedback>
-    </SafeAreaView>
+      </SafeAreaView>
+    </KeyboardAvoidingView>
   );
 }
 
