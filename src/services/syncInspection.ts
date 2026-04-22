@@ -6,8 +6,8 @@ import {
     parseInspectionsFromStorage,
     type Inspection,
 } from "../utils/inspectionStorage";
+import { loadScopedInspectionsWithMigration } from "../utils/storageScope";
 
-const INSPECTIONS_KEY = "inspections";
 const USER_KEY = "user";
 
 const extra = Constants.expoConfig?.extra as
@@ -81,8 +81,8 @@ export async function syncInspection(inspection: Inspection): Promise<boolean> {
   }
 }
 
-export async function syncPendingInspections(): Promise<void> {
-  const rawData = await AsyncStorage.getItem(INSPECTIONS_KEY);
+export async function syncPendingInspections(userId?: string | null): Promise<void> {
+  const { key: inspectionsKey, data: rawData } = await loadScopedInspectionsWithMigration(userId);
   const inspections = parseInspectionsFromStorage(rawData);
   console.log("SYNC STARTED");
 
@@ -105,7 +105,7 @@ export async function syncPendingInspections(): Promise<void> {
       syncStatus: "syncing",
       updatedAt: Date.now(),
     };
-    await AsyncStorage.setItem(INSPECTIONS_KEY, JSON.stringify(next));
+    await AsyncStorage.setItem(inspectionsKey, JSON.stringify(next));
 
     console.log("SENDING:", next[i].id);
     const ok = await syncInspection(next[i]);
@@ -115,7 +115,7 @@ export async function syncPendingInspections(): Promise<void> {
       syncStatus: ok ? "synced" : "failed",
       updatedAt: Date.now(),
     };
-    await AsyncStorage.setItem(INSPECTIONS_KEY, JSON.stringify(next));
+    await AsyncStorage.setItem(inspectionsKey, JSON.stringify(next));
     if (ok) {
       console.log("SUCCESS:", next[i].id);
     } else {

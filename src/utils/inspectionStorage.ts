@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { loadScopedInspectionsWithMigration } from "./storageScope";
 
-const INSPECTIONS_KEY = "inspections";
 const SYNC_QUEUE_KEY = "syncQueue";
 
 export type ReportImage = {
@@ -266,9 +266,10 @@ export async function removeFromSyncQueue(id: string): Promise<void> {
 export async function updateInspectionById(
   id: string,
   updates: Partial<Inspection>,
+  userId?: string | null,
 ): Promise<boolean> {
   try {
-    const raw = await AsyncStorage.getItem(INSPECTIONS_KEY);
+    const { key, data: raw } = await loadScopedInspectionsWithMigration(userId);
     const list = parseInspectionsFromStorage(raw);
     const idx = list.findIndex((x) => x.id === id);
     if (idx === -1) {
@@ -280,7 +281,7 @@ export async function updateInspectionById(
       updatedAt: Date.now(),
     };
     const next = [...list.slice(0, idx), merged, ...list.slice(idx + 1)];
-    await AsyncStorage.setItem(INSPECTIONS_KEY, JSON.stringify(next));
+    await AsyncStorage.setItem(key, JSON.stringify(next));
     return true;
   } catch {
     return false;

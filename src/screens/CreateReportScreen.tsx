@@ -23,6 +23,7 @@ import { syncPendingInspections } from "../services/syncInspection";
 import type { Inspection } from "../utils/inspectionStorage";
 import { addToSyncQueue, parseInspectionsFromStorage } from "../utils/inspectionStorage";
 import { persistImage } from "../utils/persistImage";
+import { loadScopedInspectionsWithMigration } from "../utils/storageScope";
 
 type Props = {
   navigation: any;
@@ -222,7 +223,7 @@ export default function CreateReportScreen({ navigation, route }: Props) {
     const inspectionId = Date.now().toString();
 
     try {
-      const existing = await AsyncStorage.getItem("inspections");
+      const { key, data: existing } = await loadScopedInspectionsWithMigration(user?.id);
       const list = parseInspectionsFromStorage(existing);
 
       const now = Date.now();
@@ -245,9 +246,9 @@ export default function CreateReportScreen({ navigation, route }: Props) {
 
       const updated = [newInspection, ...list];
       const limited = updated.slice(0, 20);
-      await AsyncStorage.setItem("inspections", JSON.stringify(limited));
+      await AsyncStorage.setItem(key, JSON.stringify(limited));
       await addToSyncQueue(newInspection.id);
-      await syncPendingInspections();
+      await syncPendingInspections(user?.id);
     } catch {
       // Storage failure should not block preview / export flow.
     }

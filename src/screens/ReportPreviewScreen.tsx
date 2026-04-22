@@ -25,6 +25,7 @@ import {
 } from "../utils/inspectionStorage";
 import { exportInspectionPDF } from "../utils/pdfExports";
 import { persistImage } from "../utils/persistImage";
+import { loadScopedInspectionsWithMigration } from "../utils/storageScope";
 
 type PreviewReportImage = {
   id?: string;
@@ -67,7 +68,7 @@ export default function ReportPreviewScreen({ navigation, route }: any) {
     async function loadExistingInspectionForEdit() {
       if (!inspectionId) return;
       try {
-        const existing = await AsyncStorage.getItem("inspections");
+        const { data: existing } = await loadScopedInspectionsWithMigration(user?.id);
         const list = parseInspectionsFromStorage(existing);
         const current = list.find((item) => item.id === inspectionId);
         if (!current || cancelled) return;
@@ -96,7 +97,7 @@ export default function ReportPreviewScreen({ navigation, route }: any) {
     return () => {
       cancelled = true;
     };
-  }, [inspectionId]);
+  }, [inspectionId, user?.id]);
 
   useEffect(() => {
     async function checkImageUrisExist() {
@@ -212,7 +213,7 @@ export default function ReportPreviewScreen({ navigation, route }: any) {
       return;
     }
     try {
-      const existing = await AsyncStorage.getItem("inspections");
+      const { key, data: existing } = await loadScopedInspectionsWithMigration(user?.id);
       const list = parseInspectionsFromStorage(existing);
       const updated = list.map((item) =>
         item.id === inspectionId
@@ -225,7 +226,7 @@ export default function ReportPreviewScreen({ navigation, route }: any) {
             }
           : item,
       );
-      await AsyncStorage.setItem("inspections", JSON.stringify(updated));
+      await AsyncStorage.setItem(key, JSON.stringify(updated));
       setExportedAs(exportType);
       setExportedAt(timestamp);
     } catch {
@@ -248,7 +249,7 @@ export default function ReportPreviewScreen({ navigation, route }: any) {
         await applyLocalExportTracking("pdf", timestamp);
       }
 
-      await syncPendingInspections();
+      await syncPendingInspections(user?.id);
     } catch (e: any) {
       console.log("PDF export error =>", e);
       Alert.alert("Export failed", e?.message ?? "Unknown error");
@@ -269,7 +270,7 @@ export default function ReportPreviewScreen({ navigation, route }: any) {
         await applyLocalExportTracking("doc", timestamp);
       }
 
-      await syncPendingInspections();
+      await syncPendingInspections(user?.id);
     } catch (err) {
       console.error("DOCX export failed:", err);
       Alert.alert("Error", "Failed to export DOCX");
@@ -284,7 +285,7 @@ export default function ReportPreviewScreen({ navigation, route }: any) {
     }
     setSaving(true);
     try {
-      const existing = await AsyncStorage.getItem("inspections");
+      const { key, data: existing } = await loadScopedInspectionsWithMigration(user?.id);
       const list = parseInspectionsFromStorage(existing);
       const inspection = list.find((i) => i.id === inspectionId);
       const now = Date.now();
@@ -331,8 +332,8 @@ export default function ReportPreviewScreen({ navigation, route }: any) {
         ...list.filter((i) => i.id !== inspectionId),
       ];
 
-      await AsyncStorage.setItem("inspections", JSON.stringify(updated));
-      await syncPendingInspections();
+      await AsyncStorage.setItem(key, JSON.stringify(updated));
+      await syncPendingInspections(user?.id);
       Alert.alert("Saved", "Inspection updated successfully");
       setTimeout(() => {
         navigation.navigate("HomeMain");

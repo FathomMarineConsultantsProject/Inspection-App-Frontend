@@ -16,13 +16,14 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import useOffline from "../hooks/useOffline";
+import { useAuth } from "../context/AuthContext";
 import { syncPendingInspections } from "../services/syncInspection";
 import { COLORS } from "../theme/colors";
 import type { Inspection } from "../utils/inspectionStorage";
 import { parseInspectionsFromStorage } from "../utils/inspectionStorage";
+import { loadScopedInspectionsWithMigration } from "../utils/storageScope";
 
 const USER_NAME_KEY = "user_name";
-const INSPECTIONS_KEY = "inspections";
 
 const extra = Constants.expoConfig?.extra as
   | { supabaseUrl?: string; supabaseKey?: string }
@@ -60,6 +61,7 @@ function formatExportedAt(exportedAt?: string) {
 }
 
 export default function HomeScreen({ navigation }: any) {
+  const { user } = useAuth();
   const [userName, setUserName] = useState("User");
   const [inspections, setInspections] = useState<Inspection[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -81,11 +83,11 @@ export default function HomeScreen({ navigation }: any) {
   useEffect(() => {
     if (!isOffline) {
       console.log("RUNNING REAL SYNC");
-      void syncPendingInspections();
+      void syncPendingInspections(user?.id);
     } else {
       console.log("SKIPPING SYNC (OFFLINE)");
     }
-  }, [isOffline]);
+  }, [isOffline, user?.id]);
 
   const loadUserName = useCallback(async () => {
     try {
@@ -100,22 +102,23 @@ export default function HomeScreen({ navigation }: any) {
 
   const loadInspections = useCallback(async () => {
     try {
-      const raw = await AsyncStorage.getItem(INSPECTIONS_KEY);
-      const list = parseInspectionsFromStorage(raw);
+      console.log("LOADING INSPECTIONS FOR USER:", user?.id);
+      const { data } = await loadScopedInspectionsWithMigration(user?.id);
+      const list = parseInspectionsFromStorage(data);
       setInspections(list.slice(0, 5));
     } catch {
       setInspections([]);
     }
-  }, []);
+  }, [user?.id]);
 
   const deleteInspection = useCallback(async (id: string) => {
     try {
-      const raw = await AsyncStorage.getItem(INSPECTIONS_KEY);
+      const { key, data: raw } = await loadScopedInspectionsWithMigration(user?.id);
       const list = parseInspectionsFromStorage(raw);
       const inspection = list.find((item) => item.id === id);
       const images = inspection?.report?.images || [];
       const next = list.filter((item) => item.id !== id);
-      await AsyncStorage.setItem(INSPECTIONS_KEY, JSON.stringify(next));
+      await AsyncStorage.setItem(key, JSON.stringify(next));
       setInspections(next.slice(0, 5));
 
       if (supabase) {
@@ -147,19 +150,19 @@ export default function HomeScreen({ navigation }: any) {
     } catch {
       // keep list as-is on failure
     }
-  }, []);
+  }, [user?.id]);
 
   useFocusEffect(
     useCallback(() => {
       if (!isOffline) {
         console.log("RUNNING REAL SYNC");
-        void syncPendingInspections();
+        void syncPendingInspections(user?.id);
       } else {
         console.log("SKIPPING SYNC (OFFLINE)");
       }
       loadUserName();
       void loadInspections();
-    }, [isOffline, loadUserName, loadInspections])
+    }, [isOffline, loadUserName, loadInspections, user?.id])
   );
 
   const onRefresh = useCallback(async () => {

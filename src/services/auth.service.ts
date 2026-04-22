@@ -1,4 +1,5 @@
-import API from './api';
+import type { Session, User } from "@supabase/supabase-js";
+import { supabase } from "../supabaseClient";
 
 export type LoginResponse = {
   access_token: string;
@@ -28,24 +29,79 @@ export type RegisterResponse = {
   };
 };
 
+function mapAuthResponse(user: User | null, session: Session | null): LoginResponse {
+  return {
+    access_token: session?.access_token || "",
+    token_type: session?.token_type || "bearer",
+    user: user
+      ? {
+          id: user.id,
+          full_name:
+            (user.user_metadata?.full_name as string | undefined) ||
+            (user.user_metadata?.name as string | undefined),
+          name: user.user_metadata?.name as string | undefined,
+          email: user.email,
+        }
+      : undefined,
+    session: session ? { access_token: session.access_token } : undefined,
+  };
+}
+
 /**
- * Login user with email and password
+ * Login user with email and password using Supabase Auth.
  */
 export async function loginService(
   email: string,
   password: string
 ): Promise<LoginResponse> {
-  try {
-    const res = await API.post('/login', { email, password });
-    return res.data;
-  } catch (error: any) {
-    const message = error.response?.data?.message || error.message || 'Login failed';
-    throw new Error(message);
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
+
+  if (error) {
+    throw new Error(error.message || "Login failed");
   }
+
+  return mapAuthResponse(data.user, data.session);
 }
 
+export const register = async (
+  email: string,
+  password: string,
+  full_name: string
+): Promise<RegisterResponse> => {
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: {
+        full_name,
+      },
+    },
+  });
+
+  if (error) {
+    throw new Error(error.message || "Registration failed");
+  }
+
+  if (data.user) {
+    const { error: profileError } = await supabase.from("profiles").insert({
+      id: data.user.id,
+      full_name,
+      email,
+    });
+
+    if (profileError) {
+      throw new Error(profileError.message || "Failed to create profile");
+    }
+  }
+
+  return mapAuthResponse(data.user, data.session);
+};
+
 /**
- * Register user with name, email, and password
+ * Register user with name, email, and password using Supabase Auth.
  */
 export async function registerService(
   email: string,
@@ -62,24 +118,13 @@ export async function registerService(
   arg2: string,
   arg3?: string
 ): Promise<RegisterResponse> {
-  try {
-    const hasThreeArgs = typeof arg3 === 'string';
-    const full_name = hasThreeArgs ? arg1 : '';
-    const email = hasThreeArgs ? arg2 : arg1;
-    const password = hasThreeArgs ? (arg3 as string) : arg2;
-    const res = await API.post('/register', { email, password, full_name });
-    return res.data;
-  } catch (error: any) {
-    const message = error.response?.data?.message || error.message || 'Registration failed';
-    throw new Error(message);
-  }
+  const hasThreeArgs = typeof arg3 === "string";
+  const full_name = hasThreeArgs ? arg1 : "";
+  const email = hasThreeArgs ? arg2 : arg1;
+  const password = hasThreeArgs ? (arg3 as string) : arg2;
+  return register(email, password, full_name);
 }
 
 export async function registerUser(email: string, password: string, full_name: string) {
-  const res = await API.post('/register', {
-    email,
-    password,
-    full_name,
-  });
-  return res.data;
+  return registerService(full_name, email, password);
 }

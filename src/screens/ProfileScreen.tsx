@@ -22,29 +22,38 @@ import Input from "../components/Input";
 import PrimaryButton from "../components/PrimaryButton";
 import { useAuth } from "../context/AuthContext";
 import API from "../services/api";
+import { getUserScopedKey } from "../utils/storageScope";
 
 type Profile = {
   full_name: string;
   email: string;
-  profile_image: string;
+  profile_image: string | null;
   profile?: {
-    profile_image?: string;
+    profile_image?: string | null;
   };
   phone: string;
   location: string;
 };
 
-const placeholderImage = require("../../assets/images/logo.png");
+const DEFAULT_AVATAR = require("../../assets/default-avatar.jpg");
 const USER_STORAGE_KEY = "user";
 const PROFILE_IMAGE_KEY = "profile_image";
 
+const isValidImage = (uri?: string | null): uri is string => {
+  if (!uri) return false;
+
+  const trimmed = uri.trim().toLowerCase();
+
+  return trimmed !== "" && trimmed !== "null" && trimmed !== "undefined";
+};
+
 export default function ProfileScreen() {
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
 
   const [profile, setProfile] = useState<Profile>({
     full_name: "",
     email: "",
-    profile_image: "",
+    profile_image: null,
     phone: "",
     location: "",
   });
@@ -71,7 +80,7 @@ export default function ProfileScreen() {
         email: data.email,
         phone: data.phone,
         location: data.location,
-        profile_image: data.profile_image,
+        profile_image: data.profile_image ?? null,
       };
 
       await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(updatedUser));
@@ -93,7 +102,10 @@ export default function ProfileScreen() {
         email: parsed.email ?? prev.email,
         phone: parsed.phone ?? prev.phone,
         location: parsed.location ?? prev.location,
-        profile_image: parsed.profile_image ?? prev.profile_image,
+        profile_image:
+          parsed.profile_image !== undefined
+            ? (isValidImage(parsed.profile_image) ? parsed.profile_image : null)
+            : prev.profile_image,
       }));
     } catch {
       // ignore
@@ -102,19 +114,21 @@ export default function ProfileScreen() {
 
   const saveLocalProfileImage = useCallback(async (uri: string) => {
     setProfileImage(uri);
-    await AsyncStorage.setItem(PROFILE_IMAGE_KEY, uri);
-  }, []);
+    const profileImageKey = getUserScopedKey(PROFILE_IMAGE_KEY, user?.id);
+    await AsyncStorage.setItem(profileImageKey, uri);
+  }, [user?.id]);
 
   const loadLocalProfileImage = useCallback(async () => {
     try {
-      const savedImage = await AsyncStorage.getItem(PROFILE_IMAGE_KEY);
-      if (savedImage) {
+      const profileImageKey = getUserScopedKey(PROFILE_IMAGE_KEY, user?.id);
+      const savedImage = await AsyncStorage.getItem(profileImageKey);
+      if (isValidImage(savedImage)) {
         setProfileImage(savedImage);
       }
     } catch {
       // ignore
     }
-  }, []);
+  }, [user?.id]);
 
   const fetchProfile = useCallback(async () => {
     try {
@@ -123,16 +137,18 @@ export default function ProfileScreen() {
       console.log("PROFILE API RESPONSE:", res.data);
 
       const data = res.data;
+      const profileImageCandidate = data.profile_image || data.profile?.profile_image || null;
+      const safeProfileImage = isValidImage(profileImageCandidate) ? profileImageCandidate : null;
 
       const next: Profile = {
         full_name: data.full_name || "",
         email: data.email || "",
         phone: data.phone || "",
         location: data.location || "",
-        profile_image: data.profile_image || data.profile?.profile_image || "",
+        profile_image: safeProfileImage,
         profile: data.profile
           ? {
-              profile_image: data.profile.profile_image || "",
+              profile_image: safeProfileImage,
             }
           : undefined,
       };
@@ -185,13 +201,56 @@ export default function ProfileScreen() {
   const openModal = () => {
     setEditProfile({
       ...profile,
-      profile_image: profileImage || profile.profile_image,
+      profile_image: profileImage || profile.profile_image || null,
     });
     setVisible(true);
   };
 
   const openImagePicker = () => {
     setPickerVisible(true);
+  };
+
+  const handleImagePick = () => {
+    setPickerVisible(true);
+  };
+
+  const getProfileImage = (uri?: string | null) => {
+    if (!uri) return DEFAULT_AVATAR;
+
+    const cleaned = uri.trim().toLowerCase();
+
+    if (
+      cleaned === "" ||
+      cleaned === "null" ||
+      cleaned === "undefined"
+    ) {
+      return DEFAULT_AVATAR;
+    }
+
+    return { uri };
+  };
+
+  const getAvatarSource = () => getProfileImage(profileImage);
+
+  const removeProfileImage = async () => {
+    setProfileImage(null);
+    setEditProfile((prev) => ({ ...prev, profile_image: null }));
+
+    const key = getUserScopedKey("profile_image", user?.id);
+    await AsyncStorage.removeItem(key);
+    const rawUser = await AsyncStorage.getItem(USER_STORAGE_KEY);
+    if (rawUser) {
+      const parsedUser = JSON.parse(rawUser) as Record<string, unknown>;
+      await AsyncStorage.setItem(
+        USER_STORAGE_KEY,
+        JSON.stringify({
+          ...parsedUser,
+          profile_image: null,
+        }),
+      );
+    }
+
+    console.log("PROFILE IMAGE REMOVED");
   };
 
   const openCamera = async () => {
@@ -280,23 +339,26 @@ export default function ProfileScreen() {
     }
   };
 
-  const imageUri = profileImage || null;
-
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>Your Profile</Text>
 
-      <View style={styles.card}>
-        <Image
-          source={imageUri ? { uri: imageUri } : placeholderImage}
-          style={styles.avatar}
-        />
+      <View style={styles.profileCard}>
+        <View style={styles.profileHeader}>
+          <TouchableOpacity onPress={handleImagePick}>
+            <Image
+              source={getAvatarSource()}
+              style={styles.avatar}
+              resizeMode="cover"
+            />
+          </TouchableOpacity>
 
-        <View style={styles.info}>
-          <Text style={styles.name}>{profile.full_name}</Text>
-          <Text style={styles.meta}>{profile.email}</Text>
-          <Text style={styles.meta}>{profile.phone || "No phone"}</Text>
-          <Text style={styles.meta}>{profile.location || "No location"}</Text>
+          <View style={styles.profileInfo}>
+            <Text style={styles.name}>{profile.full_name}</Text>
+            <Text style={styles.subText}>{profile.email}</Text>
+            <Text style={styles.subText}>{profile.phone || "No phone"}</Text>
+            <Text style={styles.subText}>{profile.location || "No location"}</Text>
+          </View>
         </View>
       </View>
 
@@ -323,13 +385,13 @@ export default function ProfileScreen() {
               <View style={styles.avatarContainer}>
                 <TouchableOpacity onPress={openImagePicker}>
                   <Image
-                    source={
-                          (editProfile.profile_image || profileImage)
-                            ? { uri: editProfile.profile_image || (profileImage as string) }
-                        : placeholderImage
-                    }
+                    source={getProfileImage(editProfile.profile_image)}
                     style={styles.modalAvatar}
+                    resizeMode="cover"
                   />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={removeProfileImage} style={styles.removeBtn}>
+                  <Text style={styles.removeText}>Remove Profile Picture</Text>
                 </TouchableOpacity>
               </View>
 
@@ -430,19 +492,32 @@ const styles = StyleSheet.create({
   container: { padding: 16 },
   title: { fontSize: 22, fontWeight: "bold", marginBottom: 10 },
 
-  card: {
-    flexDirection: "row",
-    padding: 16,
+  profileCard: {
     borderRadius: 16,
-    backgroundColor: "#eee",
+    padding: 16,
+    backgroundColor: "#fff",
     marginBottom: 14,
   },
 
-  avatar: { width: 80, height: 80, borderRadius: 40 },
+  profileHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 16,
+  },
 
-  info: { marginLeft: 14, justifyContent: "center" },
+  avatar: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+  },
+
+  profileInfo: {
+    marginLeft: 16,
+    flex: 1,
+  },
+
   name: { fontSize: 18, fontWeight: "600" },
-  meta: { fontSize: 14, color: "#666", marginTop: 2 },
+  subText: { fontSize: 14, color: "#666", marginTop: 4 },
 
   modal: {
     flex: 1,
@@ -477,9 +552,22 @@ const styles = StyleSheet.create({
   },
 
   modalAvatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: "#f2f2f2",
+    overflow: "hidden",
+  },
+
+  removeBtn: {
+    marginTop: 12,
+    alignSelf: "center",
+  },
+
+  removeText: {
+    color: "#ff3b30",
+    fontSize: 14,
+    fontWeight: "500",
   },
 
   locationLabel: {
