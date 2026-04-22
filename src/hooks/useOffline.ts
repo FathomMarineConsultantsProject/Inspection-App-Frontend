@@ -2,7 +2,7 @@ import NetInfo, { type NetInfoState } from "@react-native-community/netinfo";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 function computeIsOffline(state: NetInfoState): boolean {
-  return !state.isConnected || !state.isInternetReachable;
+  return !state.isConnected;
 }
 
 export default function useOffline() {
@@ -13,6 +13,7 @@ export default function useOffline() {
     let active = true;
 
     const apply = (state: NetInfoState) => {
+      console.log("NETWORK STATUS:", state.isConnected);
       if (active) {
         setIsOffline(computeIsOffline(state));
       }

@@ -46,6 +46,10 @@
     ],
     "experiments": {
       "reactCompiler": true
+    },
+    "extra": {
+      "supabaseUrl": "https://gmdlzumogoowfjtbhkjl.supabase.co",
+      "supabaseKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdtZGx6dW1vZ29vd2ZqdGJoa2psIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxNDk4ODcsImV4cCI6MjA5MTcyNTg4N30.-wg6QGT8sQJhBqZSY2RqgmKAgO53kNOHqy2xR4xImPU"
     }
   }
 }

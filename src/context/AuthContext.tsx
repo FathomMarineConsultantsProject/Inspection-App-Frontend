@@ -13,8 +13,16 @@ const ASYNC_TOKEN_KEY = "token";
 const ASYNC_TOKEN_EXPIRY_KEY = "tokenExpiry";
 const TOKEN_VALID_MS = 72 * 60 * 60 * 1000;
 
+type AuthUser = {
+  id?: string;
+  full_name?: string;
+  name?: string;
+  email?: string;
+};
+
 type AuthContextType = {
   token: string | null;
+  user: AuthUser | null;
   isLoading: boolean;
   bootstrapping:boolean;
   login: (email: string, password: string) => Promise<void>;
@@ -26,6 +34,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [bootstrapping, setBootstrapping] = useState(true);
 
@@ -45,7 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function persistSessionToAsyncStorage(
     accessToken: string,
-    user: { full_name?: string; name?: string; email?: string }
+    user: { id?: string; full_name?: string; name?: string; email?: string }
   ) {
     const expiry = Date.now() + TOKEN_VALID_MS;
     await AsyncStorage.multiSet([
@@ -54,6 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       [
         ASYNC_USER_KEY,
         JSON.stringify({
+          id: user.id || "",
           full_name: user.full_name || user.name || "",
           email: user.email || "",
         }),
@@ -74,6 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const mockToken = "mock-token-123";
         await SecureStore.setItemAsync(TOKEN_KEY, mockToken);
         setToken(mockToken);
+        setUser({ email });
         setAuthToken(mockToken);
         await saveUserSnapshot({ email });
         await persistSessionToAsyncStorage(mockToken, { email });
@@ -89,13 +100,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       await SecureStore.setItemAsync(TOKEN_KEY, accessToken);
+      const userFromLogin: AuthUser = {
+        id: res.user?.id,
+        full_name: res.user?.full_name,
+        name: res.user?.name,
+        email: res.user?.email || email,
+      };
       setToken(accessToken);
+      setUser(userFromLogin);
       setAuthToken(accessToken);
       await saveUserSnapshot({
         name: res.user?.full_name || res.user?.name,
         email: res.user?.email || email,
       });
       await persistSessionToAsyncStorage(accessToken, {
+        id: res.user?.id,
         full_name: res.user?.full_name || res.user?.name,
         email: res.user?.email || email,
       });
@@ -116,6 +135,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const mockToken = "mock-token-123";
         await SecureStore.setItemAsync(TOKEN_KEY, mockToken);
         setToken(mockToken);
+        setUser({ full_name: name, email });
         setAuthToken(mockToken);
         await saveUserSnapshot({ name, email });
         await persistSessionToAsyncStorage(mockToken, { full_name: name, email });
@@ -138,6 +158,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await SecureStore.deleteItemAsync(TOKEN_KEY);
     await clearAsyncAuthStorage();
     setToken(null);
+    setUser(null);
     setAuthToken(null);
   }
 
@@ -154,6 +175,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         const saved = await SecureStore.getItemAsync(TOKEN_KEY);
+        const savedUser = await AsyncStorage.getItem(ASYNC_USER_KEY);
+        if (savedUser) {
+          try {
+            const parsed = JSON.parse(savedUser) as AuthUser;
+            setUser(parsed);
+          } catch {
+            setUser(null);
+          }
+        } else {
+          setUser(null);
+        }
         if (saved) {
           setToken(saved);
           setAuthToken(saved);
@@ -164,6 +196,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               await SecureStore.deleteItemAsync(TOKEN_KEY);
               await clearAsyncAuthStorage();
               setToken(null);
+              setUser(null);
               setAuthToken(null);
             }
           }
@@ -177,7 +210,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ token, isLoading, bootstrapping,login, register, logout }}>
+    <AuthContext.Provider value={{ token, user, isLoading, bootstrapping,login, register, logout }}>
       {children}
     </AuthContext.Provider>
   );

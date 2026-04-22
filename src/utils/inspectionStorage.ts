@@ -32,8 +32,11 @@ export type InspectionExport = {
   lastExportedAt?: number;
 };
 
+export type ExportType = "pdf" | "doc";
+
 export type Inspection = {
   id: string;
+  userId?: string | null;
   createdAt: number;
   updatedAt: number;
   ship: InspectionShip;
@@ -41,6 +44,8 @@ export type Inspection = {
   status: "draft" | "completed";
   syncStatus: "pending" | "syncing" | "synced" | "failed";
   export?: InspectionExport;
+  exported_as?: ExportType;
+  exported_at?: string;
 };
 
 function normalizeShip(raw: unknown): InspectionShip {
@@ -164,9 +169,16 @@ export function normalizeInspection(raw: unknown): Inspection | null {
       : "pending";
 
   const exportBlock = normalizeExport(r.export);
+  const exportedAs: ExportType | undefined =
+    r.exported_as === "pdf" || r.exported_as === "doc"
+      ? r.exported_as
+      : undefined;
+  const exportedAt =
+    typeof r.exported_at === "string" ? r.exported_at : undefined;
 
   return {
     id,
+    userId: typeof r.userId === "string" ? r.userId : undefined,
     createdAt: created,
     updatedAt: updated,
     ship: normalizeShip(r.ship),
@@ -174,6 +186,8 @@ export function normalizeInspection(raw: unknown): Inspection | null {
     status,
     syncStatus,
     export: exportBlock,
+    exported_as: exportedAs,
+    exported_at: exportedAt,
   };
 }
 

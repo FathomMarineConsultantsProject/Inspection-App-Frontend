@@ -1,20 +1,20 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useFocusEffect } from "@react-navigation/native";
 import * as ImagePicker from "expo-image-picker";
 import * as SecureStore from "expo-secure-store";
-import { useFocusEffect } from "@react-navigation/native";
 import React, { useCallback, useEffect, useState } from "react";
 import {
-  Alert,
-  Image,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    Alert,
+    Image,
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { GooglePlacesAutocomplete } from "react-native-google-places-autocomplete";
 
@@ -27,12 +27,16 @@ type Profile = {
   full_name: string;
   email: string;
   profile_image: string;
+  profile?: {
+    profile_image?: string;
+  };
   phone: string;
   location: string;
 };
 
 const placeholderImage = require("../../assets/images/logo.png");
 const USER_STORAGE_KEY = "user";
+const PROFILE_IMAGE_KEY = "profile_image";
 
 export default function ProfileScreen() {
   const { logout } = useAuth();
@@ -44,6 +48,7 @@ export default function ProfileScreen() {
     phone: "",
     location: "",
   });
+  const [profileImage, setProfileImage] = useState<string | null>(null);
 
   const [editProfile, setEditProfile] = useState(profile);
   const [visible, setVisible] = useState(false);
@@ -52,7 +57,25 @@ export default function ProfileScreen() {
 
   const persistUser = async (data: Profile) => {
     try {
-      await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(data));
+      const existingUser = await AsyncStorage.getItem(USER_STORAGE_KEY);
+
+      let parsedUser: Record<string, unknown> = {};
+
+      if (existingUser) {
+        parsedUser = JSON.parse(existingUser) as Record<string, unknown>;
+      }
+
+      const updatedUser = {
+        ...parsedUser,
+        full_name: data.full_name,
+        email: data.email,
+        phone: data.phone,
+        location: data.location,
+        profile_image: data.profile_image,
+      };
+
+      await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(updatedUser));
+      console.log("UPDATED USER (MERGED):", updatedUser);
     } catch {
       // ignore
     }
@@ -77,6 +100,22 @@ export default function ProfileScreen() {
     }
   }, []);
 
+  const saveLocalProfileImage = useCallback(async (uri: string) => {
+    setProfileImage(uri);
+    await AsyncStorage.setItem(PROFILE_IMAGE_KEY, uri);
+  }, []);
+
+  const loadLocalProfileImage = useCallback(async () => {
+    try {
+      const savedImage = await AsyncStorage.getItem(PROFILE_IMAGE_KEY);
+      if (savedImage) {
+        setProfileImage(savedImage);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
   const fetchProfile = useCallback(async () => {
     try {
       const res = await API.get("/profile");
@@ -90,7 +129,12 @@ export default function ProfileScreen() {
         email: data.email || "",
         phone: data.phone || "",
         location: data.location || "",
-        profile_image: data.profile_image || "",
+        profile_image: data.profile_image || data.profile?.profile_image || "",
+        profile: data.profile
+          ? {
+              profile_image: data.profile.profile_image || "",
+            }
+          : undefined,
       };
 
       setProfile(next);
@@ -118,9 +162,14 @@ export default function ProfileScreen() {
   useFocusEffect(
     useCallback(() => {
       void loadUserFromStorage();
+      void loadLocalProfileImage();
       void fetchProfile();
-    }, [loadUserFromStorage, fetchProfile])
+    }, [loadUserFromStorage, loadLocalProfileImage, fetchProfile])
   );
+
+  useEffect(() => {
+    void loadLocalProfileImage();
+  }, [loadLocalProfileImage]);
 
   useEffect(() => {
     (async () => {
@@ -134,7 +183,10 @@ export default function ProfileScreen() {
   }, []);
 
   const openModal = () => {
-    setEditProfile(profile);
+    setEditProfile({
+      ...profile,
+      profile_image: profileImage || profile.profile_image,
+    });
     setVisible(true);
   };
 
@@ -147,17 +199,21 @@ export default function ProfileScreen() {
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.5,
-      base64: true,
     });
 
     if (!result.canceled) {
-      const base64Image = result.assets[0].base64
-        ? `data:image/jpeg;base64,${result.assets[0].base64}`
-        : result.assets[0].uri;
+      const uri = result.assets[0].uri;
+
+      await saveLocalProfileImage(uri);
+
+      setProfile((prev) => ({
+        ...prev,
+        profile_image: uri,
+      }));
 
       setEditProfile((prev) => ({
         ...prev,
-        profile_image: base64Image,
+        profile_image: uri,
       }));
     }
 
@@ -169,17 +225,21 @@ export default function ProfileScreen() {
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.5,
-      base64: true,
     });
 
     if (!result.canceled) {
-      const base64Image = result.assets[0].base64
-        ? `data:image/jpeg;base64,${result.assets[0].base64}`
-        : result.assets[0].uri;
+      const uri = result.assets[0].uri;
+
+      await saveLocalProfileImage(uri);
+
+      setProfile((prev) => ({
+        ...prev,
+        profile_image: uri,
+      }));
 
       setEditProfile((prev) => ({
         ...prev,
-        profile_image: base64Image,
+        profile_image: uri,
       }));
     }
 
@@ -190,14 +250,22 @@ export default function ProfileScreen() {
     try {
       setLoading(true);
 
+      const localImage = editProfile.profile_image;
+      if (localImage) {
+        await saveLocalProfileImage(localImage);
+        setProfile((prev) => ({
+          ...prev,
+          profile_image: localImage,
+        }));
+      }
+
       const payload = {
         full_name: editProfile.full_name,
         phone: editProfile.phone,
         location: editProfile.location,
-        profile_image: editProfile.profile_image,
       };
 
-      console.log("SENDING PAYLOAD:", payload);
+      console.log("Final payload:", payload);
 
       await API.put("/profile", payload);
 
@@ -212,17 +280,15 @@ export default function ProfileScreen() {
     }
   };
 
+  const imageUri = profileImage || null;
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>Your Profile</Text>
 
       <View style={styles.card}>
         <Image
-          source={
-            profile.profile_image
-              ? { uri: profile.profile_image }
-              : placeholderImage
-          }
+          source={imageUri ? { uri: imageUri } : placeholderImage}
           style={styles.avatar}
         />
 
@@ -258,8 +324,8 @@ export default function ProfileScreen() {
                 <TouchableOpacity onPress={openImagePicker}>
                   <Image
                     source={
-                      editProfile.profile_image
-                        ? { uri: editProfile.profile_image }
+                          (editProfile.profile_image || profileImage)
+                            ? { uri: editProfile.profile_image || (profileImage as string) }
                         : placeholderImage
                     }
                     style={styles.modalAvatar}

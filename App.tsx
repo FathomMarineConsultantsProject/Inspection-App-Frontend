@@ -1,11 +1,10 @@
-import React, { useCallback, useEffect, useState } from "react";
-import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
+import { StatusBar } from "expo-status-bar";
+import React, { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider } from "./src/context/AuthContext";
 import RootNavigator from "./src/navigation/RootNavigator";
-import { startAutoSync } from "./src/utils/syncManager";
 
 void SplashScreen.preventAutoHideAsync();
 
@@ -13,7 +12,6 @@ export default function App() {
   const [appReady, setAppReady] = useState(false);
 
   useEffect(() => {
-    startAutoSync();
     setAppReady(true);
   }, []);
 

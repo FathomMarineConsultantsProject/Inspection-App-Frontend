@@ -1,26 +1,28 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { CameraView, useCameraPermissions } from "expo-camera";
+import * as ImagePicker from "expo-image-picker";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Alert,
-  Image,
-  Keyboard,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableWithoutFeedback,
-  View,
+    Alert,
+    Image,
+    Keyboard,
+    KeyboardAvoidingView,
+    Platform,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableWithoutFeedback,
+    View,
 } from "react-native";
-import * as ImagePicker from "expo-image-picker";
-import { CameraView, useCameraPermissions } from "expo-camera";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import PrimaryButton from "../components/PrimaryButton";
-import { persistImage } from "../utils/persistImage";
+import { useAuth } from "../context/AuthContext";
+import { syncPendingInspections } from "../services/syncInspection";
 import type { Inspection } from "../utils/inspectionStorage";
 import { addToSyncQueue, parseInspectionsFromStorage } from "../utils/inspectionStorage";
+import { persistImage } from "../utils/persistImage";
 
 type Props = {
   navigation: any;
@@ -43,6 +45,7 @@ function makeId() {
 
 export default function CreateReportScreen({ navigation, route }: Props) {
   const { ship } = route.params;
+  const { user } = useAuth();
   const insets = useSafeAreaInsets();
 
   const [items, setItems] = useState<ReportImage[]>([]);
@@ -225,6 +228,7 @@ export default function CreateReportScreen({ navigation, route }: Props) {
       const now = Date.now();
       const newInspection: Inspection = {
         id: inspectionId,
+        userId: user?.id || null,
         createdAt: now,
         updatedAt: now,
         ship: persistedShip,
@@ -234,6 +238,8 @@ export default function CreateReportScreen({ navigation, route }: Props) {
         },
         status: "completed",
         syncStatus: "pending",
+        exported_as: null,
+        exported_at: null,
         export: undefined,
       };
 
@@ -241,6 +247,7 @@ export default function CreateReportScreen({ navigation, route }: Props) {
       const limited = updated.slice(0, 20);
       await AsyncStorage.setItem("inspections", JSON.stringify(limited));
       await addToSyncQueue(newInspection.id);
+      await syncPendingInspections();
     } catch {
       // Storage failure should not block preview / export flow.
     }

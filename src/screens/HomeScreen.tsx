@@ -1,6 +1,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as SecureStore from "expo-secure-store";
 import { useFocusEffect } from "@react-navigation/native";
+import { createClient } from "@supabase/supabase-js";
+import Constants from "expo-constants";
+import * as SecureStore from "expo-secure-store";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   Platform,
@@ -14,13 +16,23 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import useOffline from "../hooks/useOffline";
+import { syncPendingInspections } from "../services/syncInspection";
 import { COLORS } from "../theme/colors";
 import type { Inspection } from "../utils/inspectionStorage";
 import { parseInspectionsFromStorage } from "../utils/inspectionStorage";
-import { triggerSync } from "../utils/syncManager";
 
 const USER_NAME_KEY = "user_name";
 const INSPECTIONS_KEY = "inspections";
+
+const extra = Constants.expoConfig?.extra as
+  | { supabaseUrl?: string; supabaseKey?: string }
+  | undefined;
+
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || extra?.supabaseUrl;
+const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || extra?.supabaseKey;
+
+const supabase =
+  supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
 
 function formatInspectionDate(createdAt: number) {
   return new Date(createdAt).toLocaleDateString("en-GB", {
@@ -30,12 +42,31 @@ function formatInspectionDate(createdAt: number) {
   });
 }
 
+function formatExportedAt(exportedAt?: string) {
+  if (!exportedAt) {
+    return "";
+  }
+  const date = new Date(exportedAt);
+  if (Number.isNaN(date.getTime())) {
+    return exportedAt;
+  }
+  return date.toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 export default function HomeScreen({ navigation }: any) {
   const [userName, setUserName] = useState("User");
   const [inspections, setInspections] = useState<Inspection[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const insets = useSafeAreaInsets();
   const { isOffline, isBackOnline, resetWasOffline } = useOffline();
+  console.log("HOME SCREEN LOADED");
+  console.log("IS OFFLINE:", isOffline);
 
   useEffect(() => {
     if (!isBackOnline) {
@@ -49,7 +80,10 @@ export default function HomeScreen({ navigation }: any) {
 
   useEffect(() => {
     if (!isOffline) {
-      void triggerSync();
+      console.log("RUNNING REAL SYNC");
+      void syncPendingInspections();
+    } else {
+      console.log("SKIPPING SYNC (OFFLINE)");
     }
   }, [isOffline]);
 
@@ -78,9 +112,38 @@ export default function HomeScreen({ navigation }: any) {
     try {
       const raw = await AsyncStorage.getItem(INSPECTIONS_KEY);
       const list = parseInspectionsFromStorage(raw);
+      const inspection = list.find((item) => item.id === id);
+      const images = inspection?.report?.images || [];
       const next = list.filter((item) => item.id !== id);
       await AsyncStorage.setItem(INSPECTIONS_KEY, JSON.stringify(next));
       setInspections(next.slice(0, 5));
+
+      if (supabase) {
+        for (const img of images) {
+          const publicUrl = (img as typeof img & { publicUrl?: string }).publicUrl;
+          if (publicUrl) {
+            const path = publicUrl.split("/inspection-images/")[1];
+            if (path) {
+              await supabase.storage
+                .from("inspection-images")
+                .remove([path]);
+            }
+          }
+        }
+
+        try {
+          await supabase.from("inspections").delete().eq("id", id);
+
+          await supabase
+            .from("inspection_images")
+            .delete()
+            .eq("inspection_id", id);
+
+          console.log("DELETED FROM SUPABASE");
+        } catch (e) {
+          console.log("DELETE ERROR:", e);
+        }
+      }
     } catch {
       // keep list as-is on failure
     }
@@ -88,9 +151,15 @@ export default function HomeScreen({ navigation }: any) {
 
   useFocusEffect(
     useCallback(() => {
+      if (!isOffline) {
+        console.log("RUNNING REAL SYNC");
+        void syncPendingInspections();
+      } else {
+        console.log("SKIPPING SYNC (OFFLINE)");
+      }
       loadUserName();
       void loadInspections();
-    }, [loadUserName, loadInspections])
+    }, [isOffline, loadUserName, loadInspections])
   );
 
   const onRefresh = useCallback(async () => {
@@ -142,10 +211,18 @@ export default function HomeScreen({ navigation }: any) {
               const photoCount = inspection.report?.images?.length ?? 0;
               const shipLabel = inspection.ship?.shipName?.trim() || "Unknown ship";
               const metaLine = `${formatInspectionDate(inspection.createdAt)} • ${photoCount} photos`;
+              const exportLabel = inspection.exported_as
+                ? `Exported as ${inspection.exported_as.toUpperCase()}`
+                : null;
+              const exportDate = inspection.exported_at
+                ? formatExportedAt(inspection.exported_at)
+                : null;
               return (
                 <View key={inspection.id} style={styles.inspectionCard}>
                   <Text style={styles.inspectionShipName}>{shipLabel}</Text>
                   <Text style={styles.inspectionMeta}>{metaLine}</Text>
+                  {exportLabel ? <Text style={styles.inspectionMeta}>{exportLabel}</Text> : null}
+                  {exportDate ? <Text style={styles.inspectionMeta}>{exportDate}</Text> : null}
                   <View style={styles.actionRow}>
                     <Pressable
                       style={({ pressed }) => [

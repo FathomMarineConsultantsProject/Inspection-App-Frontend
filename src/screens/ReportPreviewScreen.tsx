@@ -1,25 +1,30 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as FileSystem from "expo-file-system/legacy";
 import * as ImagePicker from "expo-image-picker";
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  Alert,
-  Image,
-  Keyboard,
-  Pressable,
-  Text,
-  TextInput,
-  TouchableWithoutFeedback,
-  View,
+    Alert,
+    Image,
+    Keyboard,
+    Pressable,
+    Text,
+    TextInput,
+    TouchableWithoutFeedback,
+    View,
 } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import PrimaryButton from "../components/PrimaryButton";
+import { useAuth } from "../context/AuthContext";
+import { syncPendingInspections } from "../services/syncInspection";
 import { COLORS } from "../theme/colors";
+import { generateAndShareDocx } from "../utils/docxExport";
+import {
+    parseInspectionsFromStorage,
+    type ExportType,
+} from "../utils/inspectionStorage";
 import { exportInspectionPDF } from "../utils/pdfExports";
 import { persistImage } from "../utils/persistImage";
-import { generateAndShareDocx } from "../utils/docxExport";
-import { parseInspectionsFromStorage } from "../utils/inspectionStorage";
 
 type PreviewReportImage = {
   id?: string;
@@ -31,11 +36,14 @@ type PreviewReportImage = {
 
 export default function ReportPreviewScreen({ navigation, route }: any) {
   const { ship, report } = route.params;
+  const { user } = useAuth();
   const { inspectionId } = route.params;
   const existingCreatedAt = route.params?.inspectionCreatedAt as number | undefined;
   const [shipInfo, setShipInfo] = useState(ship);
   const [imagesPerPage, setImagesPerPage] = useState(report?.imagesPerPage ?? 2);
   const [saving, setSaving] = useState(false);
+  const [exportedAs, setExportedAs] = useState<ExportType | undefined>(undefined);
+  const [exportedAt, setExportedAt] = useState<string | undefined>(undefined);
 
   const [images, setImages] = useState<PreviewReportImage[]>(
     route.params?.images ?? route.params?.report?.images ?? [],
@@ -77,6 +85,8 @@ export default function ReportPreviewScreen({ navigation, route }: any) {
         setShipInfo(validInspection.ship);
         setImages(validInspection.report.images ?? []);
         setImagesPerPage(current.report?.imagesPerPage ?? 2);
+        setExportedAs(current.exported_as);
+        setExportedAt(current.exported_at);
       } catch {
         // Keep initial route payload if storage read fails.
       }
@@ -197,6 +207,32 @@ export default function ReportPreviewScreen({ navigation, route }: any) {
     }));
   }
 
+  async function applyLocalExportTracking(exportType: ExportType, timestamp: string) {
+    if (!inspectionId) {
+      return;
+    }
+    try {
+      const existing = await AsyncStorage.getItem("inspections");
+      const list = parseInspectionsFromStorage(existing);
+      const updated = list.map((item) =>
+        item.id === inspectionId
+          ? {
+              ...item,
+              exported_as: exportType,
+              exported_at: timestamp,
+              syncStatus: "pending" as const,
+              updatedAt: Date.now(),
+            }
+          : item,
+      );
+      await AsyncStorage.setItem("inspections", JSON.stringify(updated));
+      setExportedAs(exportType);
+      setExportedAt(timestamp);
+    } catch {
+      // ignore
+    }
+  }
+
   async function exportPDF() {
     try {
       console.log("PDF export started");
@@ -206,6 +242,13 @@ export default function ReportPreviewScreen({ navigation, route }: any) {
         images: toExportImages(prepared),
         imagesPerPage: imagesPerPage,
       });
+
+      if (inspectionId) {
+        const timestamp = new Date().toISOString();
+        await applyLocalExportTracking("pdf", timestamp);
+      }
+
+      await syncPendingInspections();
     } catch (e: any) {
       console.log("PDF export error =>", e);
       Alert.alert("Export failed", e?.message ?? "Unknown error");
@@ -220,6 +263,13 @@ export default function ReportPreviewScreen({ navigation, route }: any) {
         images: toExportImages(prepared),
         imagesPerPage,
       });
+
+      if (inspectionId) {
+        const timestamp = new Date().toISOString();
+        await applyLocalExportTracking("doc", timestamp);
+      }
+
+      await syncPendingInspections();
     } catch (err) {
       console.error("DOCX export failed:", err);
       Alert.alert("Error", "Failed to export DOCX");
@@ -236,6 +286,7 @@ export default function ReportPreviewScreen({ navigation, route }: any) {
     try {
       const existing = await AsyncStorage.getItem("inspections");
       const list = parseInspectionsFromStorage(existing);
+      const inspection = list.find((i) => i.id === inspectionId);
       const now = Date.now();
       const persistedShipPhotoUri = shipInfo.shipPhotoUri
         ? await persistImage(shipInfo.shipPhotoUri)
@@ -246,10 +297,13 @@ export default function ReportPreviewScreen({ navigation, route }: any) {
 
       const updatedInspection = {
         id: inspectionId,
+        userId: inspection?.userId || user?.id || null,
         createdAt: existingCreatedAt || now,
         updatedAt: now,
         status: "draft" as const,
         syncStatus: "pending" as const,
+        exported_as: null,
+        exported_at: null,
         ship: {
           ...shipInfo,
           shipPhotoUri: persistedShipPhotoUri,
@@ -278,6 +332,7 @@ export default function ReportPreviewScreen({ navigation, route }: any) {
       ];
 
       await AsyncStorage.setItem("inspections", JSON.stringify(updated));
+      await syncPendingInspections();
       Alert.alert("Saved", "Inspection updated successfully");
       setTimeout(() => {
         navigation.navigate("HomeMain");
@@ -317,6 +372,25 @@ export default function ReportPreviewScreen({ navigation, route }: any) {
         <Text style={{ fontWeight: "800" }}>Inspector:</Text>
         <Text>{shipInfo.inspectorName ?? shipInfo.surveyorName ?? "-"}</Text>
       </View>
+
+      {exportedAs ? (
+        <View style={{ marginBottom: 12 }}>
+          <Text style={{ fontWeight: "800" }}>
+            Exported as {exportedAs.toUpperCase()}
+          </Text>
+          {exportedAt ? (
+            <Text>
+              {new Date(exportedAt).toLocaleString("en-GB", {
+                day: "2-digit",
+                month: "short",
+                year: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+              })}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
 
       {!!shipInfo.shipPhotoUri && (
         <Image

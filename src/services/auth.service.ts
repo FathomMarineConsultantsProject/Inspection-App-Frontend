@@ -4,6 +4,7 @@ export type LoginResponse = {
   access_token: string;
   token_type?: string;
   user?: {
+    id?: string;
     name?: string;
     full_name?: string;
     email?: string;
@@ -17,6 +18,7 @@ export type RegisterResponse = {
   access_token: string;
   token_type?: string;
   user?: {
+    id?: string;
     name?: string;
     full_name?: string;
     email?: string;
