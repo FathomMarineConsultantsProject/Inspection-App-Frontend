@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Image,
@@ -12,6 +12,7 @@ import {
   Text,
   TouchableWithoutFeedback,
   View,
+  TextInput,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -24,6 +25,10 @@ import PrimaryButton from "../components/PrimaryButton";
 
 export default function ShipInfoScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
+
+  const shipTypeRef = useRef<TextInput>(null);
+  const inspectorRef = useRef<TextInput>(null);
+  const portRef = useRef<TextInput>(null);
 
   const [shipName, setShipName] = useState("");
   const [shipType, setShipType] = useState("");
@@ -101,8 +106,12 @@ export default function ShipInfoScreen({ navigation }: any) {
   }
 
   function openDateModal() {
-    setTempDate(inspectionDate);
-    setShowModal(true);
+    if (Platform.OS === "ios") {
+      setTempDate(inspectionDate);
+      setShowModal(true);
+    } else {
+      setShowModal(true);
+    }
   }
 
   function closeDateModal() {
@@ -158,108 +167,132 @@ export default function ShipInfoScreen({ navigation }: any) {
             showsVerticalScrollIndicator={false}
             contentInsetAdjustmentBehavior="never"
           >
-          <View style={styles.headerRow}>
-            <Text style={styles.title}>Ship Details</Text>
+            <View style={styles.headerRow}>
+              <Text style={styles.title}>Ship Details</Text>
 
-            <Pressable onPress={openDateModal} style={styles.dateChip} hitSlop={10}>
-              <Ionicons name="calendar-outline" size={14} color="#111" />
-              <Text style={styles.dateChipText}>{dateLabel}</Text>
-            </Pressable>
-          </View>
+              <Pressable onPress={openDateModal} style={styles.dateChip} hitSlop={10}>
+                <Ionicons name="calendar-outline" size={14} color="#111" />
+                <Text style={styles.dateChipText}>{dateLabel}</Text>
+              </Pressable>
+            </View>
 
-          <Modal
-            visible={showModal}
-            transparent
-            animationType="fade"
-            onRequestClose={closeDateModal}
-          >
-            <View style={styles.modalBackdrop}>
-              <View style={styles.modalContainer}>
+            {Platform.OS === "ios" ? (
+              <Modal
+                visible={showModal}
+                transparent
+                animationType="fade"
+                onRequestClose={closeDateModal}
+              >
+                <View style={styles.modalBackdrop}>
+                  <View style={styles.modalContainer}>
+                    <DateTimePicker
+                      value={tempDate}
+                      mode="date"
+                      display="inline"
+                      themeVariant="light"
+                      onChange={(_, selectedDate) => {
+                        if (selectedDate) {
+                          setTempDate(selectedDate);
+                        }
+                      }}
+                    />
+
+                    <View style={styles.modalActions}>
+                      <Pressable onPress={closeDateModal} style={styles.cancelButton}>
+                        <Text style={styles.cancelButtonText}>Cancel</Text>
+                      </Pressable>
+                      <Pressable onPress={confirmDateSelection} style={styles.confirmButton}>
+                        <Text style={styles.confirmButtonText}>Confirm</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                </View>
+              </Modal>
+            ) : (
+              showModal && (
                 <DateTimePicker
-                  value={tempDate}
+                  value={inspectionDate}
                   mode="date"
-                  display={Platform.OS === "ios" ? "inline" : "default"}
-                  themeVariant="light"
-                  onChange={(_, selectedDate) => {
-                    if (selectedDate) {
-                      setTempDate(selectedDate);
+                  display="default"
+                  onChange={(event, selectedDate) => {
+                    setShowModal(false);
+
+                    if (event.type === "set" && selectedDate) {
+                      setInspectionDate(selectedDate);
                     }
                   }}
                 />
+              )
+            )}
 
-                <View style={styles.modalActions}>
-                  <Pressable onPress={closeDateModal} style={styles.cancelButton}>
-                    <Text style={styles.cancelButtonText}>Cancel</Text>
-                  </Pressable>
-                  <Pressable onPress={confirmDateSelection} style={styles.confirmButton}>
-                    <Text style={styles.confirmButtonText}>Confirm</Text>
-                  </Pressable>
-                </View>
-              </View>
+            <View style={styles.photoRow}>
+              <Pressable onPress={pickShipPhoto} style={styles.photoBox}>
+                {shipPhotoUri ? (
+                  <Image source={{ uri: shipPhotoUri }} resizeMode="cover" style={styles.photoImg} />
+                ) : (
+                  <Text style={styles.photoText}>+ Ship Photo</Text>
+                )}
+              </Pressable>
+
+              <View style={styles.photoSpacer} />
+
+              <Pressable onPress={pickCompanyLogo} style={styles.photoBox}>
+                {companyLogoUri ? (
+                  <Image source={{ uri: companyLogoUri }} resizeMode="cover" style={styles.photoImg} />
+                ) : (
+                  <Text style={styles.photoText}>+ Company Logo</Text>
+                )}
+              </Pressable>
             </View>
-          </Modal>
 
-          <View style={styles.photoRow}>
-            <Pressable onPress={pickShipPhoto} style={styles.photoBox}>
-              {shipPhotoUri ? (
-                <Image source={{ uri: shipPhotoUri }} resizeMode="cover" style={styles.photoImg} />
-              ) : (
-                <Text style={styles.photoText}>+ Ship Photo</Text>
-              )}
-            </Pressable>
+            <Input
+              label="Ship Name"
+              value={shipName}
+              onChangeText={setShipName}
+              placeholder="e.g., MV Ocean Star"
+              autoCapitalize="words"
+              returnKeyType="next"
+              onSubmitEditing={() => shipTypeRef.current?.focus()}
+            />
 
-            <View style={styles.photoSpacer} />
+            <Input
+              inputRef={shipTypeRef}
+              label="Ship Type"
+              value={shipType}
+              onChangeText={setShipType}
+              placeholder="e.g., Cargo, Tanker, Passenger"
+              autoCapitalize="words"
+              returnKeyType="next"
+              onSubmitEditing={() => inspectorRef.current?.focus()}
+            />
 
-            <Pressable onPress={pickCompanyLogo} style={styles.photoBox}>
-              {companyLogoUri ? (
-                <Image source={{ uri: companyLogoUri }} resizeMode="cover" style={styles.photoImg} />
-              ) : (
-                <Text style={styles.photoText}>+ Company Logo</Text>
-              )}
-            </Pressable>
-          </View>
+            <Input
+              inputRef={inspectorRef}
+              label="Inspector Name"
+              value={inspectorName}
+              onChangeText={setInspectorName}
+              placeholder="e.g., John Doe"
+              autoCapitalize="words"
+              returnKeyType="next"
+              onSubmitEditing={() => portRef.current?.focus()}
+            />
 
-          <Input
-            label="Ship Name"
-            value={shipName}
-            onChangeText={setShipName}
-            placeholder="e.g., MV Ocean Star"
-            autoCapitalize="words"
-            returnKeyType="next"
-          />
+            <Input
+              inputRef={portRef}
+              label="Port Name"
+              value={portName}
+              onChangeText={setPortName}
+              placeholder="e.g., Port name"
+              autoCapitalize="words"
+              returnKeyType="done"
+              onSubmitEditing={onNext}
+            />
 
-          <Input
-            label="Ship Type"
-            value={shipType}
-            onChangeText={setShipType}
-            placeholder="e.g., Cargo, Tanker, Passenger"
-            autoCapitalize="words"
-            returnKeyType="next"
-          />
-
-          <Input
-            label="Inspector Name"
-            value={inspectorName}
-            onChangeText={setInspectorName}
-            placeholder="e.g., John Doe"
-            autoCapitalize="words"
-            returnKeyType="next"
-          />
-
-          <Input
-            label="Port Name"
-            value={portName}
-            onChangeText={setPortName}
-            placeholder="e.g., Port name"
-            autoCapitalize="words"
-            returnKeyType="done"
-          />
-
-          <View style={styles.buttonWrap}>
-            <PrimaryButton title="Next: Create Report" onPress={onNext} />
-          </View>
-        </ScrollView>
-      </TouchableWithoutFeedback>
+            <View style={styles.buttonWrap}>
+              <PrimaryButton title="Next: Create Report" onPress={onNext} />
+            </View>
+          </ScrollView>
+        </TouchableWithoutFeedback>
       </SafeAreaView>
     </KeyboardAvoidingView>
   );
@@ -273,20 +306,19 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#F7F9FC",
   },
-container: {
-  paddingHorizontal: 16,
-  paddingTop: 0,
-  paddingBottom: 140,
-  flexGrow: 1,
-},
-
-headerRow: {
-  flexDirection: "row",
-  alignItems: "center",
-  justifyContent: "space-between",
-  marginTop: 10,
-  marginBottom: 16,
-},
+  container: {
+    paddingHorizontal: 16,
+    paddingTop: 0,
+    paddingBottom: 140,
+    flexGrow: 1,
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 10,
+    marginBottom: 16,
+  },
   title: {
     fontSize: 24,
     fontWeight: "800",
@@ -385,3 +417,4 @@ headerRow: {
     marginTop: 8,
   },
 });
+

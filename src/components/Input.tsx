@@ -8,6 +8,7 @@ import {
   Platform,
   NativeSyntheticEvent,
   TextInputFocusEventData,
+  TextInputSubmitEditingEventData,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "../theme/colors";
@@ -26,6 +27,9 @@ type Props = {
   returnKeyType?: "done" | "next" | "go" | "search" | "send";
   onFocus?: (e: NativeSyntheticEvent<TextInputFocusEventData>) => void;
   onBlur?: (e: NativeSyntheticEvent<TextInputFocusEventData>) => void;
+  onSubmitEditing?: (e: NativeSyntheticEvent<TextInputSubmitEditingEventData>) => void;
+  blurOnSubmit?: boolean;
+  inputRef?: React.RefObject<TextInput | null>;
 };
 
 export default function Input({
@@ -42,6 +46,9 @@ export default function Input({
   returnKeyType = "done",
   onFocus,
   onBlur,
+  onSubmitEditing,
+  blurOnSubmit,
+  inputRef,
 }: Props) {
   const [focused, setFocused] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -69,6 +76,7 @@ export default function Input({
         ) : null}
 
         <TextInput
+          ref={inputRef}
           value={value}
           onChangeText={onChangeText}
           placeholder={placeholder}
@@ -85,12 +93,13 @@ export default function Input({
             setFocused(false);
             onBlur?.(e);
           }}
+          onSubmitEditing={onSubmitEditing}
           style={[styles.input, multiline && styles.multiline]}
           underlineColorAndroid="transparent"
           selectionColor={COLORS.primary}
           cursorColor={COLORS.primary}
           returnKeyType={returnKeyType}
-          blurOnSubmit={!multiline}
+          blurOnSubmit={blurOnSubmit ?? !multiline}
         />
 
         {isPassword ? (

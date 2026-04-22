@@ -29,8 +29,29 @@ export default function SplashScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: "center", alignItems: "center" },
-  logo: { width: 220, height: 220, marginBottom: 14 },
-  title: { fontSize: 22, fontWeight: "900", color: "#111" },
-  sub: { marginTop: 6, color: "#555", fontWeight: "700" },
+  container: { 
+    flex: 1, 
+    justifyContent: "center", 
+    alignItems: "center" 
+  },
+
+  logo: { 
+    width: 220, 
+    height: 220, 
+    marginBottom: 14 
+  },
+
+  title: { 
+    fontSize: 22, 
+    fontWeight: "900", 
+    color: "#111",
+    textAlign: "center",   // ✅ ADD THIS
+  },
+
+  sub: { 
+    marginTop: 6, 
+    color: "#555", 
+    fontWeight: "700",
+    textAlign: "center",   // ✅ ADD THIS
+  },
 });
