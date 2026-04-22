@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Image,
@@ -17,7 +17,7 @@ import {
 import * as ImagePicker from "expo-image-picker";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect } from "@react-navigation/native";
+import { useRoute } from "@react-navigation/native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import Input from "../components/Input";
@@ -25,6 +25,7 @@ import PrimaryButton from "../components/PrimaryButton";
 
 export default function ShipInfoScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
+  const route = useRoute<any>();
 
   const shipTypeRef = useRef<TextInput>(null);
   const inspectorRef = useRef<TextInput>(null);
@@ -50,19 +51,18 @@ export default function ShipInfoScreen({ navigation }: any) {
     });
   }, [inspectionDate]);
 
-  useFocusEffect(
-    useCallback(() => {
-      setShipName("");
-      setShipType("");
-      setInspectorName("");
-      setPortName("");
-      setShipPhotoUri(null);
-      setCompanyLogoUri(null);
-      setInspectionDate(new Date());
-      setTempDate(new Date());
-      setShowModal(false);
-    }, [])
-  );
+  useEffect(() => {
+    if (route.params?.ship) {
+      const ship = route.params.ship;
+
+      setShipName(ship.shipName || "");
+      setShipType(ship.shipType || "");
+      setInspectorName(ship.inspectorName || "");
+      setPortName(ship.portName || "");
+      setCompanyLogoUri(ship.companyLogoUri || null);
+      setShipPhotoUri(ship.shipPhotoUri || null);
+    }
+  }, [route.params]);
 
   async function ensureGalleryPermission() {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -124,17 +124,36 @@ export default function ShipInfoScreen({ navigation }: any) {
   }
 
   function validate() {
-    if (!shipName.trim()) return "Ship name is required";
-    if (!shipType.trim()) return "Ship type is required";
-    if (!inspectorName.trim()) return "Inspector name is required";
-    if (!portName.trim()) return "Port name is required";
-    return null;
+    if (!shipName.trim()) {
+      Alert.alert("Missing info", "Ship name is required");
+      return false;
+    }
+    if (!shipType.trim()) {
+      Alert.alert("Missing info", "Ship type is required");
+      return false;
+    }
+    if (!inspectorName.trim()) {
+      Alert.alert("Missing info", "Inspector name is required");
+      return false;
+    }
+    if (!portName.trim()) {
+      Alert.alert("Missing info", "Port name is required");
+      return false;
+    }
+    if (!companyLogoUri) {
+      Alert.alert("Validation Error", "Company logo is required");
+      return false;
+    }
+    if (!shipPhotoUri) {
+      Alert.alert("Validation Error", "Ship photo is required");
+      return false;
+    }
+    return true;
   }
 
   function onNext() {
-    const err = validate();
-    if (err) {
-      Alert.alert("Missing info", err);
+    const isValid = validate();
+    if (!isValid) {
       return;
     }
 
@@ -417,4 +436,3 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
 });
-
