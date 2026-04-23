@@ -3,18 +3,18 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-    Alert,
-    Image,
-    Keyboard,
-    KeyboardAvoidingView,
-    Platform,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableWithoutFeedback,
-    View,
+  Alert,
+  Image,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableWithoutFeedback,
+  View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import PrimaryButton from "../components/PrimaryButton";
@@ -88,7 +88,7 @@ export default function CreateReportScreen({ navigation, route }: Props) {
       mediaTypes: ["images"],
       quality: 0.8,
       allowsMultipleSelection: true,
-      selectionLimit: 10,
+      selectionLimit: 25,
     });
 
     if (result.canceled) return;
@@ -341,6 +341,12 @@ export default function CreateReportScreen({ navigation, route }: Props) {
         <Pressable style={styles.actionBtn} onPress={pickImages}>
           <Text style={styles.actionBtnText}>Gallery</Text>
         </Pressable>
+      </View>
+
+      <View style={{ marginVertical: 10 }}>
+        <Text style={{ fontSize: 14, color: "#666" }}>
+          Images: {items.length}
+        </Text>
       </View>
 
       {/* ✅ Grid: same as your grid + add description input below each image */}

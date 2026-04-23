@@ -43,6 +43,7 @@ export default function ReportPreviewScreen({ navigation, route }: any) {
   const [shipInfo, setShipInfo] = useState(ship);
   const [imagesPerPage, setImagesPerPage] = useState(report?.imagesPerPage ?? 2);
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState<null | "pdf" | "doc">(null);
   const [exportedAs, setExportedAs] = useState<ExportType | undefined>(undefined);
   const [exportedAt, setExportedAt] = useState<string | undefined>(undefined);
 
@@ -236,6 +237,7 @@ export default function ReportPreviewScreen({ navigation, route }: any) {
 
   async function exportPDF() {
     try {
+      setExporting("pdf");
       console.log("PDF export started");
       const prepared = await prepareImagesForExport();
       await exportInspectionPDF({
@@ -253,11 +255,14 @@ export default function ReportPreviewScreen({ navigation, route }: any) {
     } catch (e: any) {
       console.log("PDF export error =>", e);
       Alert.alert("Export failed", e?.message ?? "Unknown error");
+    } finally {
+      setExporting(null);
     }
   }
 
   async function exportDOCX() {
     try {
+      setExporting("doc");
       const prepared = await prepareImagesForExport();
       await generateAndShareDocx({
         shipInfo,
@@ -274,6 +279,8 @@ export default function ReportPreviewScreen({ navigation, route }: any) {
     } catch (err) {
       console.error("DOCX export failed:", err);
       Alert.alert("Error", "Failed to export DOCX");
+    } finally {
+      setExporting(null);
     }
   }
 
@@ -494,8 +501,16 @@ export default function ReportPreviewScreen({ navigation, route }: any) {
       ))}
 
       <View style={{ gap: 10, marginTop: 10 }}>
-        <PrimaryButton title="Export as PDF" onPress={exportPDF} />
-        <PrimaryButton title="Export as DOCX" onPress={exportDOCX} />
+        <PrimaryButton
+          title={exporting === "pdf" ? "Exporting..." : "Export as PDF"}
+          onPress={exportPDF}
+          disabled={exporting !== null}
+        />
+        <PrimaryButton
+          title={exporting === "doc" ? "Exporting..." : "Export as DOC"}
+          onPress={exportDOCX}
+          disabled={exporting !== null}
+        />
         <PrimaryButton
           title={saving ? "Saving..." : "Save Inspection"}
           onPress={handleSaveDraft}
