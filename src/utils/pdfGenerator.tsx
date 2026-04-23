@@ -357,15 +357,33 @@ async function buildPdfHtml(options: GeneratePdfOptions): Promise<string> {
   return buildHtmlDocument(html);
 }
 
-function buildSafeFileName(shipName: unknown, date: unknown): string {
+function buildSafeFileName(shipName: unknown, shipInfo: unknown): string {
   const safeShip = ((typeof shipName === "string" ? shipName : "") || "")
     .trim()
     .replace(/\s+/g, "_")
     .replace(/[^\w-]/g, "");
-  const safeDate = ((typeof date === "string" ? date : "") || "")
-    .trim()
-    .replace(/[^\dA-Za-z-]/g, "-");
-  return `Fathom_Inspection_${safeShip || "Ship"}_${safeDate || "Date"}.pdf`;
+  const info = (shipInfo || {}) as {
+    date?: string;
+    inspectionDate?: string;
+    inspection_date?: string;
+  };
+  const rawDate =
+    info.date ||
+    info.inspectionDate ||
+    info?.inspection_date ||
+    null;
+
+  let formattedDate = "Date";
+
+  if (rawDate) {
+    try {
+      const d = new Date(rawDate);
+      formattedDate = d.toISOString().split("T")[0];
+    } catch {
+      formattedDate = "Date";
+    }
+  }
+  return `Fathom_Inspection_${safeShip || "Ship"}_${formattedDate}.pdf`;
 }
 
 export async function generatePdfUri(
@@ -381,7 +399,7 @@ export async function generatePdfUri(
 
   const fileName = buildSafeFileName(
     options.shipInfo.shipName,
-    options.shipInfo.date
+    options.shipInfo
   );
   const destinationUri = `${FileSystem.cacheDirectory}${fileName}`;
 

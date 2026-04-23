@@ -65,6 +65,7 @@ export default function HomeScreen({ navigation }: any) {
   const [userName, setUserName] = useState("User");
   const [inspections, setInspections] = useState<Inspection[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
   const insets = useSafeAreaInsets();
   const { isOffline, isBackOnline, resetWasOffline } = useOffline();
   console.log("HOME SCREEN LOADED");
@@ -154,14 +155,27 @@ export default function HomeScreen({ navigation }: any) {
 
   useFocusEffect(
     useCallback(() => {
+      let isActive = true;
       if (!isOffline) {
         console.log("RUNNING REAL SYNC");
         void syncPendingInspections(user?.id);
       } else {
         console.log("SKIPPING SYNC (OFFLINE)");
       }
-      loadUserName();
-      void loadInspections();
+      setLoading(true);
+      (async () => {
+        try {
+          await loadUserName();
+          await loadInspections();
+        } finally {
+          if (isActive) {
+            setLoading(false);
+          }
+        }
+      })();
+      return () => {
+        isActive = false;
+      };
     }, [isOffline, loadUserName, loadInspections, user?.id])
   );
 
@@ -174,6 +188,16 @@ export default function HomeScreen({ navigation }: any) {
       setRefreshing(false);
     }
   }, [loadUserName, loadInspections]);
+
+  if (loading) {
+    return (
+      <View style={{ padding: 20 }}>
+        <View style={{ height: 20, backgroundColor: "#eee", marginBottom: 10, borderRadius: 6 }} />
+        <View style={{ height: 20, backgroundColor: "#eee", marginBottom: 10, borderRadius: 6 }} />
+        <View style={{ height: 20, backgroundColor: "#eee", marginBottom: 10, borderRadius: 6 }} />
+      </View>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
