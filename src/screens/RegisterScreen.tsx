@@ -11,7 +11,6 @@ import {
     View,
 } from "react-native";
 
-import BrandWatermark from "../components/BrandWatermark";
 import Input from "../components/Input";
 import PrimaryButton from "../components/PrimaryButton";
 import { useAuth } from "../context/AuthContext";
@@ -88,127 +87,125 @@ export default function RegisterScreen({ navigation }: any) {
 
   return (
     <LinearGradient colors={["#F7F9FC", "#E6F4FF"]} style={{ flex: 1 }}>
-      <BrandWatermark opacity={0.18} size={380}>
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={{
+            flexGrow: 1,
+            padding: 18,
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+          keyboardShouldPersistTaps="handled"
         >
-          <ScrollView
-            contentContainerStyle={{
-              flexGrow: 1,
-              padding: 18,
-              justifyContent: "center",
-              alignItems: "center",
-            }}
-            keyboardShouldPersistTaps="handled"
-          >
-            <View style={{ width: "100%", maxWidth: 520 }}>
-              {/* Header */}
-              <View style={{ marginBottom: 16 }}>
+          <View style={{ width: "100%", maxWidth: 520 }}>
+            {/* Header */}
+            <View style={{ marginBottom: 16 }}>
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
+              >
                 <View
-                  style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
+                  style={{
+                    width: 46,
+                    height: 46,
+                    borderRadius: 14,
+                    backgroundColor: COLORS.primary,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
                 >
-                  <View
-                    style={{
-                      width: 46,
-                      height: 46,
-                      borderRadius: 14,
-                      backgroundColor: COLORS.primary,
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <Ionicons name="person-add-outline" size={22} color="#fff" />
-                  </View>
-
-                  <View>
-                    <Text style={{ fontSize: 26, fontWeight: "900", color: COLORS.text }}>
-                      Create account
-                    </Text>
-                    <Text style={{ marginTop: 2, color: "#555", fontWeight: "600" }}>
-                      Start inspections faster
-                    </Text>
-                  </View>
+                  <Ionicons name="person-add-outline" size={22} color="#fff" />
                 </View>
 
-                <Text style={{ marginTop: 14, color: COLORS.textSecondary }}>
-                  Create your account to start building reports.
-                </Text>
+                <View>
+                  <Text style={{ fontSize: 26, fontWeight: "900", color: COLORS.text }}>
+                    Create account
+                  </Text>
+                  <Text style={{ marginTop: 2, color: "#555", fontWeight: "600" }}>
+                    Start inspections faster
+                  </Text>
+                </View>
               </View>
 
-              {/* Card */}
-              <View style={cardStyle}>
-                <Input
-                  label="Full Name"
-                  value={fullName}
-                  onChangeText={setFullName}
-                  placeholder="Your name"
-                  autoCapitalize="words"
-                  leftIcon="person-outline"
-                  error={errors.name}
-                />
-
-                <Input
-                  label="Email"
-                  value={email}
-                  onChangeText={setEmail}
-                  placeholder="you@example.com"
-                  autoCapitalize="none"
-                  keyboardType="email-address"
-                  leftIcon="mail-outline"
-                  error={errors.email}
-                />
-
-                <Input
-                  label="Password"
-                  value={password}
-                  onChangeText={setPassword}
-                  placeholder="••••••••"
-                  secureTextEntry
-                  leftIcon="lock-closed-outline"
-                  error={errors.password}
-                />
-
-                <Input
-                  label="Confirm Password"
-                  value={confirmPassword}
-                  onChangeText={setConfirmPassword}
-                  placeholder="••••••••"
-                  secureTextEntry
-                  leftIcon="shield-checkmark-outline"
-                  error={errors.confirmPassword}
-                />
-
-                <Animated.View style={{ transform: [{ scale }] }}>
-                  <Pressable
-                    onPress={onSubmit}
-                    onPressIn={pressIn}
-                    onPressOut={pressOut}
-                  >
-                    <PrimaryButton
-                      title="Create Account"
-                      onPress={onSubmit}
-                      loading={isLoading}
-                      disabled={!canSubmit}
-                    />
-                  </Pressable>
-                </Animated.View>
-              </View>
-
-              {/* Footer */}
-              <Pressable
-                onPress={() => navigation.navigate("Login")}
-                style={{ marginTop: 14, alignItems: "center" }}
-              >
-                <Text style={{ fontWeight: "800", color: COLORS.text }}>
-                  Already have an account?{" "}
-                  <Text style={{ textDecorationLine: "underline" }}>Login</Text>
-                </Text>
-              </Pressable>
+              <Text style={{ marginTop: 14, color: COLORS.textSecondary }}>
+                Create your account to start building reports.
+              </Text>
             </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </BrandWatermark>
+
+            {/* Card */}
+            <View style={cardStyle}>
+              <Input
+                label="Full Name"
+                value={fullName}
+                onChangeText={setFullName}
+                placeholder="Your name"
+                autoCapitalize="words"
+                leftIcon="person-outline"
+                error={errors.name}
+              />
+
+              <Input
+                label="Email"
+                value={email}
+                onChangeText={setEmail}
+                placeholder="you@example.com"
+                autoCapitalize="none"
+                keyboardType="email-address"
+                leftIcon="mail-outline"
+                error={errors.email}
+              />
+
+              <Input
+                label="Password"
+                value={password}
+                onChangeText={setPassword}
+                placeholder="••••••••"
+                secureTextEntry
+                leftIcon="lock-closed-outline"
+                error={errors.password}
+              />
+
+              <Input
+                label="Confirm Password"
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                placeholder="••••••••"
+                secureTextEntry
+                leftIcon="shield-checkmark-outline"
+                error={errors.confirmPassword}
+              />
+
+              <Animated.View style={{ transform: [{ scale }] }}>
+               <Pressable
+                  onPress={onSubmit}
+                  onPressIn={pressIn}
+                  onPressOut={pressOut}
+                >
+                  <PrimaryButton
+                    title="Create Account"
+                    onPress={onSubmit}
+                    loading={isLoading}
+                    disabled={!canSubmit}
+                  />
+                </Pressable>
+              </Animated.View>
+            </View>
+
+            {/* Footer */}
+            <Pressable
+              onPress={() => navigation.navigate("Login")}
+              style={{ marginTop: 14, alignItems: "center" }}
+            >
+              <Text style={{ fontWeight: "800", color: COLORS.text }}>
+                Already have an account?{" "}
+                <Text style={{ textDecorationLine: "underline" }}>Login</Text>
+              </Text>
+            </Pressable>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </LinearGradient>
   );
 }

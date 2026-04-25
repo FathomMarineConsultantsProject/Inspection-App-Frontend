@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as FileSystem from "expo-file-system/legacy";
 import * as ImagePicker from "expo-image-picker";
+import * as Sharing from "expo-sharing";
 import React, { useEffect, useMemo, useState } from "react";
 import {
     Alert,
@@ -23,17 +24,23 @@ import {
     parseInspectionsFromStorage,
     type ExportType,
 } from "../utils/inspectionStorage";
-import { exportInspectionPDF } from "../utils/pdfExports";
+import { generatePDF } from "../utils/nativePdfGenerator";
 import { persistImage } from "../utils/persistImage";
+import { processImage, processImages } from "../utils/processImage";
 import { loadScopedInspectionsWithMigration } from "../utils/storageScope";
 
 type PreviewReportImage = {
   id?: string;
   uri: string;
+  exportUri?: string;
   description: string;
   originalUri?: string;
   croppedUri?: string;
 };
+
+function yieldToUI(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
 
 export default function ReportPreviewScreen({ navigation, route }: any) {
   const { ship, report } = route.params;
@@ -152,10 +159,16 @@ export default function ReportPreviewScreen({ navigation, route }: any) {
 
       if (!result.canceled && result.assets[0]) {
         const newUri = result.assets[0].uri;
+        const processedUri = await processImage(newUri);
         setImages((prev) =>
           prev.map((img, i) =>
             i === index
-              ? { ...img, uri: newUri, originalUri: newUri }
+              ? {
+                  ...img,
+                  uri: processedUri,
+                  exportUri: processedUri,
+                  originalUri: newUri,
+                }
               : img,
           ),
         );
@@ -179,10 +192,13 @@ export default function ReportPreviewScreen({ navigation, route }: any) {
         selectionLimit: 10,
       });
       if (result.canceled) return;
+      const originalUris = result.assets.map((asset) => asset.uri);
+      const processedUris = await processImages(originalUris);
 
-      const newImages: PreviewReportImage[] = result.assets.map((asset) => ({
+      const newImages: PreviewReportImage[] = result.assets.map((asset, index) => ({
         id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        uri: asset.uri,
+        uri: processedUris[index] || asset.uri,
+        exportUri: processedUris[index] || asset.uri,
         originalUri: asset.uri,
         description: "",
       }));
@@ -205,7 +221,7 @@ export default function ReportPreviewScreen({ navigation, route }: any) {
   function toExportImages(items: PreviewReportImage[]) {
     return items.map((img) => ({
       ...img,
-      uri: img.uri,
+      uri: img.exportUri || img.uri,
     }));
   }
 
@@ -240,10 +256,27 @@ export default function ReportPreviewScreen({ navigation, route }: any) {
       setExporting("pdf");
       console.log("PDF export started");
       const prepared = await prepareImagesForExport();
-      await exportInspectionPDF({
-        shipInfo,
+      const pdfPath = await generatePDF({
         images: toExportImages(prepared),
         imagesPerPage: imagesPerPage,
+        reportDetails: {
+          companyName: shipInfo?.companyName || shipInfo?.shipName || "Inspection Report",
+          shipName: shipInfo?.shipName,
+          inspector: shipInfo?.inspectorName || shipInfo?.surveyorName,
+          port: shipInfo?.portName || shipInfo?.location,
+          date: shipInfo?.inspectionDate || shipInfo?.date,
+        },
+      });
+
+      const canShare = await Sharing.isAvailableAsync();
+      if (!canShare) {
+        throw new Error(`Sharing is not available on this device. PDF saved at: ${pdfPath}`);
+      }
+
+      await Sharing.shareAsync(pdfPath, {
+        mimeType: "application/pdf",
+        dialogTitle: "Share Inspection Report",
+        UTI: "com.adobe.pdf",
       });
 
       if (inspectionId) {
@@ -310,29 +343,40 @@ export default function ReportPreviewScreen({ navigation, route }: any) {
         updatedAt: now,
         status: "draft" as const,
         syncStatus: "pending" as const,
-        exported_as: null,
-        exported_at: null,
+        exported_as: inspection?.exported_as ?? null,
+        exported_at: inspection?.exported_at ?? null,
         ship: {
           ...shipInfo,
           shipPhotoUri: persistedShipPhotoUri,
           companyLogoUri: persistedCompanyLogoUri,
         },
         report: {
-          images: await Promise.all(
-            images.map(async (img) => ({
-              ...img,
-              uri: await persistImage(img.uri),
-              originalUri: img.originalUri
-                ? await persistImage(img.originalUri)
-                : undefined,
-              croppedUri: img.croppedUri
-                ? await persistImage(img.croppedUri)
-                : undefined,
-            })),
-          ),
+          images: [] as PreviewReportImage[],
           imagesPerPage,
         },
       };
+
+      for (let i = 0; i < images.length; i += 1) {
+        const img = images[i];
+        const persistedUri = await persistImage(img.uri);
+        updatedInspection.report.images.push({
+          ...img,
+          uri: persistedUri,
+          exportUri: img.exportUri
+            ? await persistImage(img.exportUri)
+            : persistedUri,
+          originalUri: img.originalUri
+            ? await persistImage(img.originalUri)
+            : undefined,
+          croppedUri: img.croppedUri
+            ? await persistImage(img.croppedUri)
+            : undefined,
+        });
+
+        if ((i + 1) % 4 === 0) {
+          await yieldToUI();
+        }
+      }
 
       const updated = [
         updatedInspection,

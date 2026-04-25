@@ -1,20 +1,19 @@
 {
   "expo": {
-    "name": "client",
-    "slug": "client",
+    "name": "Photo Magic Report",
+    "slug": "photo-magic-report",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
     "scheme": "client",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.sk3lmm.client",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "softwareKeyboardLayoutMode": "pan",
@@ -25,22 +24,14 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.sk3lmm.client"
     },
     "web": {
       "output": "single",
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
-      [
-        "expo-splash-screen",
-        {
-          "image": "./assets/splash.png",
-          "imageWidth": 200,
-          "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
-        }
-      ],
       "expo-secure-store",
       "@react-native-community/datetimepicker"
     ],
@@ -49,7 +40,10 @@
     },
     "extra": {
       "supabaseUrl": "https://gmdlzumogoowfjtbhkjl.supabase.co",
-      "supabaseKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdtZGx6dW1vZ29vd2ZqdGJoa2psIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxNDk4ODcsImV4cCI6MjA5MTcyNTg4N30.-wg6QGT8sQJhBqZSY2RqgmKAgO53kNOHqy2xR4xImPU"
+      "supabaseKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdtZGx6dW1vZ29vd2ZqdGJoa2psIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxNDk4ODcsImV4cCI6MjA5MTcyNTg4N30.-wg6QGT8sQJhBqZSY2RqgmKAgO53kNOHqy2xR4xImPU",
+      "eas": {
+        "projectId": "83c3e73b-c693-4abf-9cb4-986f22fb0345"
+      }
     }
   }
 }

@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
-import { ActivityIndicator, Pressable, Text } from "react-native";
+import { ActivityIndicator, Text, TouchableOpacity } from "react-native";
 import { COLORS } from "../theme/colors";
 
 type Props = {
@@ -19,9 +19,9 @@ export default function PrimaryButton({
   icon,
 }: Props) {
   return (
-    <Pressable
+    <TouchableOpacity
       onPress={onPress}
-      disabled={disabled || loading}
+      disabled={false}
       style={{
         paddingVertical: 16,
         borderRadius: 14,
@@ -55,6 +55,6 @@ export default function PrimaryButton({
           </Text>
         </>
       )}
-    </Pressable>
+    </TouchableOpacity>
   );
 }

@@ -9,7 +9,7 @@ import {
 import * as FileSystem from "expo-file-system/legacy";
 import * as ImageManipulator from "expo-image-manipulator";
 import * as Sharing from "expo-sharing";
-import { GeneratePdfOptions } from "./pdfGenerator";
+import { GeneratePdfOptions } from "./nativePdfGenerator";
 
 function chunkArray<T>(arr: T[], size: number): T[][] {
   const chunks: T[][] = [];
@@ -181,7 +181,7 @@ export async function generateAndShareDocx(
       alignment: AlignmentType.CENTER,
       children: [
         new TextRun({
-          text: "Powered by Fathom Marine Consultants",
+          text: "Powered by Fathom-Nexport",
           size: 20,
         }),
       ],

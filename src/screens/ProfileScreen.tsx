@@ -21,7 +21,8 @@ import { GooglePlacesAutocomplete } from "react-native-google-places-autocomplet
 import Input from "../components/Input";
 import PrimaryButton from "../components/PrimaryButton";
 import { useAuth } from "../context/AuthContext";
-import API from "../services/api";
+import { uploadProfileImage } from "../services/uploadProfileImage";
+import { supabase } from "../supabaseClient";
 import { getUserScopedKey } from "../utils/storageScope";
 
 type Profile = {
@@ -36,7 +37,6 @@ type Profile = {
 };
 
 const DEFAULT_AVATAR = require("../../assets/default-avatar.jpg");
-const USER_STORAGE_KEY = "user";
 const PROFILE_IMAGE_KEY = "profile_image";
 
 const isValidImage = (uri?: string | null): uri is string => {
@@ -64,54 +64,6 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(false);
   const [pickerVisible, setPickerVisible] = useState(false);
 
-  const persistUser = async (data: Profile) => {
-    try {
-      const existingUser = await AsyncStorage.getItem(USER_STORAGE_KEY);
-
-      let parsedUser: Record<string, unknown> = {};
-
-      if (existingUser) {
-        parsedUser = JSON.parse(existingUser) as Record<string, unknown>;
-      }
-
-      const updatedUser = {
-        ...parsedUser,
-        full_name: data.full_name,
-        email: data.email,
-        phone: data.phone,
-        location: data.location,
-        profile_image: data.profile_image ?? null,
-      };
-
-      await AsyncStorage.setItem(USER_STORAGE_KEY, JSON.stringify(updatedUser));
-      console.log("UPDATED USER (MERGED):", updatedUser);
-    } catch {
-      // ignore
-    }
-  };
-
-  const loadUserFromStorage = useCallback(async () => {
-    try {
-      const raw = await AsyncStorage.getItem(USER_STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as Partial<Profile>;
-      setProfile((prev) => ({
-        ...prev,
-        ...parsed,
-        full_name: parsed.full_name ?? prev.full_name,
-        email: parsed.email ?? prev.email,
-        phone: parsed.phone ?? prev.phone,
-        location: parsed.location ?? prev.location,
-        profile_image:
-          parsed.profile_image !== undefined
-            ? (isValidImage(parsed.profile_image) ? parsed.profile_image : null)
-            : prev.profile_image,
-      }));
-    } catch {
-      // ignore
-    }
-  }, []);
-
   const saveLocalProfileImage = useCallback(async (uri: string) => {
     setProfileImage(uri);
     const profileImageKey = getUserScopedKey(PROFILE_IMAGE_KEY, user?.id);
@@ -132,35 +84,91 @@ export default function ProfileScreen() {
 
   const fetchProfile = useCallback(async () => {
     try {
-      const res = await API.get("/profile");
+      const {
+        data: { user: authUser },
+      } = await supabase.auth.getUser();
+      if (!authUser) {
+        console.log("NO AUTH USER -> skip profile fetch");
+        return;
+      }
+      console.log("FETCH PROFILE FOR:", authUser.id);
 
-      console.log("PROFILE API RESPONSE:", res.data);
+      let { data } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("user_id", authUser.id)
+        .single();
 
-      const data = res.data;
-      const profileImageCandidate = data.profile_image || data.profile?.profile_image || null;
-      const safeProfileImage = isValidImage(profileImageCandidate) ? profileImageCandidate : null;
+      if (!data) {
+        console.log("NO PROFILE → creating");
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
 
-      const next: Profile = {
-        full_name: data.full_name || "",
-        email: data.email || "",
-        phone: data.phone || "",
-        location: data.location || "",
-        profile_image: safeProfileImage,
-        profile: data.profile
-          ? {
-              profile_image: safeProfileImage,
+        if (!user) {
+          console.log("NO USER -> abort");
+          return;
+        }
+
+        const { error: createError } = await supabase
+          .from("profiles")
+          .upsert(
+            {
+              id: user.id,
+              user_id: user.id,
+              full_name: "",
+              phone: "",
+              location: "",
+              profile_image: null,
+            },
+            {
+              onConflict: "user_id",
             }
-          : undefined,
-      };
+          );
 
-      setProfile(next);
-      await persistUser(next);
+        if (createError) {
+          console.log("PROFILE CREATE ERROR:", createError.message || createError);
+          return;
+        }
+
+        const retry = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("user_id", authUser.id)
+          .single();
+        data = retry.data;
+      }
+
+      if (!data) return;
+
+      const image = data.profile_image;
+
+      if (!image) {
+        setProfileImage(null);
+      } else {
+        setProfileImage(image);
+      }
+
+      setProfile((prev) => {
+        const mergedProfile: Profile = {
+          ...prev,
+          full_name: data.full_name ?? prev.full_name,
+          email: authUser.email ?? prev.email,
+          phone: data.phone ?? prev.phone,
+          location: data.location ?? prev.location,
+          profile_image: image || null,
+          profile: {
+            ...(prev.profile || {}),
+            profile_image: image || null,
+          },
+        };
+        return mergedProfile;
+      });
 
       await SecureStore.setItemAsync("user_name", data.full_name || "");
-      await SecureStore.setItemAsync("email", data.email || "");
+      await SecureStore.setItemAsync("email", authUser.email || "");
     } catch (err: any) {
-      console.log("PROFILE FETCH ERROR:", err?.response?.data || err?.message);
-      await loadUserFromStorage();
+      console.log("PROFILE FETCH ERROR:", err?.message);
       const [savedName, savedEmail] = await Promise.all([
         SecureStore.getItemAsync("user_name"),
         SecureStore.getItemAsync("email"),
@@ -173,14 +181,20 @@ export default function ProfileScreen() {
         }));
       }
     }
-  }, [loadUserFromStorage]);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
-      void loadUserFromStorage();
-      void loadLocalProfileImage();
-      void fetchProfile();
-    }, [loadUserFromStorage, loadLocalProfileImage, fetchProfile])
+      let active = true;
+      (async () => {
+        await loadLocalProfileImage();
+        if (!active) return;
+        void fetchProfile();
+      })();
+      return () => {
+        active = false;
+      };
+    }, [loadLocalProfileImage, fetchProfile])
   );
 
   useEffect(() => {
@@ -233,21 +247,63 @@ export default function ProfileScreen() {
   const getAvatarSource = () => getProfileImage(profileImage);
 
   const removeProfileImage = async () => {
-    setProfileImage(null);
-    setEditProfile((prev) => ({ ...prev, profile_image: null }));
+    const {
+      data: { user: authUser },
+    } = await supabase.auth.getUser();
+    if (!authUser) {
+      return;
+    }
 
-    const key = getUserScopedKey("profile_image", user?.id);
-    await AsyncStorage.removeItem(key);
-    const rawUser = await AsyncStorage.getItem(USER_STORAGE_KEY);
-    if (rawUser) {
-      const parsedUser = JSON.parse(rawUser) as Record<string, unknown>;
-      await AsyncStorage.setItem(
-        USER_STORAGE_KEY,
-        JSON.stringify({
-          ...parsedUser,
+    const { data } = await supabase
+      .from("profiles")
+      .select("profile_image")
+      .eq("user_id", authUser.id)
+      .single();
+
+    const existingUrl = data?.profile_image;
+
+    if (existingUrl) {
+      const oldPath = existingUrl.split(
+        "/storage/v1/object/public/profile-images/"
+      )[1];
+
+      if (oldPath) {
+        await supabase.storage
+          .from("profile-images")
+          .remove([oldPath]);
+
+        console.log("DELETED IMAGE FROM STORAGE:", oldPath);
+      }
+    }
+
+    const { error } = await supabase
+      .from("profiles")
+      .upsert(
+        {
+          id: authUser.id,
+          user_id: authUser.id,
           profile_image: null,
-        }),
+        },
+        {
+          onConflict: "user_id",
+        }
       );
+
+    if (!error) {
+      setProfileImage(null);
+      setEditProfile((prev) => ({ ...prev, profile_image: null }));
+      const key = getUserScopedKey("profile_image", user?.id);
+      await AsyncStorage.removeItem(key);
+
+      setProfile((prev) => ({
+        ...prev,
+        profile_image: null,
+        profile: {
+          ...(prev.profile || {}),
+          profile_image: null,
+        },
+      }));
+      console.log("PROFILE IMAGE CLEARED IN DB");
     }
 
     console.log("PROFILE IMAGE REMOVED");
@@ -279,6 +335,43 @@ export default function ProfileScreen() {
     setPickerVisible(false);
   };
 
+  const uploadAndSaveImage = useCallback(
+    async (uri: string) => {
+      const {
+        data: { user: authUser },
+      } = await supabase.auth.getUser();
+      if (!authUser) return null;
+
+      const existingProfileImageUrl =
+        profile.profile?.profile_image && profile.profile.profile_image.startsWith("http")
+          ? profile.profile.profile_image
+          : profile.profile_image && profile.profile_image.startsWith("http")
+            ? profile.profile_image
+            : null;
+
+      if (!uri.startsWith("http") && existingProfileImageUrl) {
+        const oldPath = existingProfileImageUrl.split(
+          "/storage/v1/object/public/profile-images/"
+        )[1];
+
+        if (oldPath) {
+          await supabase.storage
+            .from("profile-images")
+            .remove([oldPath]);
+
+          console.log("OLD IMAGE DELETED:", oldPath);
+        }
+      }
+
+      const publicUrl = await uploadProfileImage(uri, authUser.id);
+
+      setProfileImage(publicUrl);
+      await saveLocalProfileImage(publicUrl);
+      return publicUrl;
+    },
+    [profile.profile?.profile_image, profile.profile_image, saveLocalProfileImage]
+  );
+
   const openGallery = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       allowsEditing: true,
@@ -306,33 +399,75 @@ export default function ProfileScreen() {
   };
 
   const handleSaveProfile = async () => {
+    console.log("SAVE FUNCTION STARTED");
     try {
       setLoading(true);
 
       const localImage = editProfile.profile_image;
+      let profileImageValue = profile.profile_image || null;
       if (localImage) {
-        await saveLocalProfileImage(localImage);
-        setProfile((prev) => ({
-          ...prev,
-          profile_image: localImage,
-        }));
+        const uploaded = await uploadAndSaveImage(localImage);
+        if (uploaded) {
+          profileImageValue = uploaded;
+          setProfile((prev) => ({
+            ...prev,
+            profile_image: uploaded,
+          }));
+        }
       }
 
-      const payload = {
-        full_name: editProfile.full_name,
-        phone: editProfile.phone,
-        location: editProfile.location,
-      };
+      const {
+        data: { user: authUser },
+      } = await supabase.auth.getUser();
+      if (!authUser) {
+        console.log("NO USER FOUND");
+        setLoading(false);
+        return;
+      }
 
-      console.log("Final payload:", payload);
+      const full_name = editProfile.full_name;
+      const phone = editProfile.phone;
+      const location = editProfile.location;
+      const profile_image = profileImageValue;
 
-      await API.put("/profile", payload);
+      const { error } = await supabase
+        .from("profiles")
+        .upsert(
+          {
+            id: authUser.id,
+            user_id: authUser.id,
+            full_name,
+            phone,
+            location,
+            profile_image,
+          },
+          {
+            onConflict: "user_id",
+          }
+        );
 
-      await fetchProfile();
+      if (error) {
+        console.log("SAVE ERROR:", error);
+        return;
+      }
+
+      setProfile((prev) => ({
+        ...prev,
+        full_name,
+        phone,
+        location,
+        profile_image,
+        profile: {
+          ...(prev.profile || {}),
+          profile_image,
+        },
+      }));
+
+      console.log("PROFILE SAVED");
       setVisible(false);
       Alert.alert("Profile updated successfully");
     } catch (err: any) {
-      console.log("SAVE ERROR:", err?.response?.data || err?.message);
+      console.log("SAVE ERROR:", err?.message);
       Alert.alert("Failed to update profile");
     } finally {
       setLoading(false);
@@ -447,7 +582,11 @@ export default function ProfileScreen() {
               <View style={styles.modalActions}>
                 <PrimaryButton
                   title="Save"
-                  onPress={handleSaveProfile}
+                  onPress={() => {
+                    console.log("BUTTON CLICKED");
+                    handleSaveProfile();
+                  }}
+                  disabled={false}
                   loading={loading}
                 />
 

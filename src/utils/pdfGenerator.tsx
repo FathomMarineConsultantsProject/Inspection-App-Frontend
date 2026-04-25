@@ -224,13 +224,21 @@ function buildCoverPage(
           ${
             logoDataUri !== EMPTY_IMAGE_FALLBACK
               ? `<img src="${logoDataUri}" style="height:52px; max-width:100%; object-fit:contain;" alt="Company Logo" />`
+<<<<<<< ours
               : `<div style="font-size:18px; font-weight:700; color:#1e3a8a;">FATHOM</div>`
+=======
+              : `<div style="font-size:18px; font-weight:700; color:#1e3a8a;">SHIP INSPECTION</div>`
+>>>>>>> theirs
           }
         </div>
 
         <div style="width:36%; text-align:center;">
           <div style="font-size:12px; color:#4b5563; margin-bottom:2px;">
+<<<<<<< ours
             Powered by Fathom Marine Consultants
+=======
+            Powered by Fathom-Nexport
+>>>>>>> theirs
           </div>
           <div style="font-size:24px; font-weight:800; letter-spacing:0.6px; color:#1e3a8a;">
             INSPECTION REPORT
@@ -383,7 +391,11 @@ function buildSafeFileName(shipName: unknown, shipInfo: unknown): string {
       formattedDate = "Date";
     }
   }
+<<<<<<< ours
   return `Fathom_Inspection_${safeShip || "Ship"}_${formattedDate}.pdf`;
+=======
+  return `Ship_Inspection_${safeShip || "Ship"}_${formattedDate}.pdf`;
+>>>>>>> theirs
 }
 
 export async function generatePdfUri(

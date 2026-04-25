@@ -15,13 +15,4 @@ const API = axios.create({
   },
 });
 
-// Add token to requests if available
-export function setAuthToken(token: string | null) {
-  if (token) {
-    API.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-  } else {
-    delete API.defaults.headers.common['Authorization'];
-  }
-}
-
 export default API;

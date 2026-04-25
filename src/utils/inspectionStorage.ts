@@ -6,6 +6,7 @@ const SYNC_QUEUE_KEY = "syncQueue";
 export type ReportImage = {
   id: string;
   uri: string;
+  exportUri?: string;
   description: string;
   originalUri?: string;
   croppedUri?: string;
@@ -86,6 +87,7 @@ function normalizeReportImage(raw: unknown, index: number): ReportImage | null {
   return {
     id,
     uri,
+    exportUri: typeof o.exportUri === "string" ? o.exportUri : undefined,
     description: typeof o.description === "string" ? o.description : "",
     originalUri: typeof o.originalUri === "string" ? o.originalUri : undefined,
     croppedUri: typeof o.croppedUri === "string" ? o.croppedUri : undefined,

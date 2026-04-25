@@ -1,19 +1,37 @@
-// src/utils/pdfExports.ts
-
-export {
-    generateAndSharePdf,
-    generatePdfUri
-} from "./pdfGenerator";
+import {
+  generatePDF,
+  generateAndSharePDF,
+  type GeneratePdfOptions,
+  type ReportImage,
+  type ShipInfo,
+} from "./nativePdfGenerator";
 
 export type {
-    GeneratePdfOptions, ReportImage, ShipInfo
-} from "./pdfGenerator";
+  GeneratePdfOptions,
+  ReportImage,
+  ShipInfo,
+} from "./nativePdfGenerator";
 
-import type { GeneratePdfOptions } from "./pdfGenerator";
-import { generateAndSharePdf } from "./pdfGenerator";
+export async function generatePdfUri(options: GeneratePdfOptions): Promise<string> {
+  return generatePDF({
+    images: options.images,
+    imagesPerPage: options.imagesPerPage,
+    reportDetails: options.shipInfo,
+  });
+}
+
+export async function generateAndSharePdf(
+  options: GeneratePdfOptions,
+): Promise<string> {
+  return generateAndSharePDF({
+    images: options.images,
+    imagesPerPage: options.imagesPerPage,
+    reportDetails: options.shipInfo,
+  });
+}
 
 export async function exportInspectionPDF(
-  options: GeneratePdfOptions
+  options: GeneratePdfOptions,
 ): Promise<void> {
   console.log("PDF OPTIONS:", options);
 

@@ -1,33 +1,37 @@
-import { createClient } from "@supabase/supabase-js";
-const supabase = createClient(
-  process.env.EXPO_PUBLIC_SUPABASE_URL!,
-  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!
-);
+import { supabase } from "../supabaseClient";
 
 export async function uploadProfileImage(
   uri: string,
-  userId: string
-): Promise<string | null> {
+  userId: string,
+  oldUrl?: string | null
+): Promise<string> {
   try {
     console.log("Uploading image:", uri);
 
-    const response = await fetch(uri);
-    const blob = await response.blob();
+    // Prevent re-upload of already uploaded images
+    if (uri.startsWith("http")) return uri;
 
     const fileExt = uri.split(".").pop() || "jpg";
     const fileName = `${userId}-${Date.now()}.${fileExt}`;
     const filePath = `avatars/${fileName}`;
 
+    const formData = new FormData();
+
+    formData.append("file", {
+      uri,
+      name: fileName,
+      type: `image/${fileExt}`,
+    } as any);
+
     const { error } = await supabase.storage
       .from("profile-images")
-      .upload(filePath, blob, {
-        contentType: "image/jpeg",
+      .upload(filePath, formData, {
         upsert: true,
       });
 
     if (error) {
       console.log("UPLOAD ERROR:", error);
-      return null;
+      throw error;
     }
 
     const { data } = supabase.storage
@@ -35,11 +39,12 @@ export async function uploadProfileImage(
       .getPublicUrl(filePath);
 
     console.log("FINAL IMAGE URI:", data.publicUrl);
+    console.log("UPLOAD COMPLETED SUCCESSFULLY");
 
     return data.publicUrl;
   } catch (err) {
-    console.log("UPLOAD CRASH:", err);
-    return null;
+    console.log("UPLOAD FAILED:", err);
+    throw err;
   }
 }
 

@@ -38,7 +38,7 @@ function mapAuthResponse(user: User | null, session: Session | null): LoginRespo
           id: user.id,
           full_name:
             (user.user_metadata?.full_name as string | undefined) ||
-            (user.user_metadata?.name as string | undefined),
+            "",
           name: user.user_metadata?.name as string | undefined,
           email: user.email,
         }
@@ -85,16 +85,32 @@ export const register = async (
     throw new Error(error.message || "Registration failed");
   }
 
-  if (data.user) {
-    const { error: profileError } = await supabase.from("profiles").insert({
-      id: data.user.id,
-      full_name,
-      email,
-    });
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-    if (profileError) {
-      throw new Error(profileError.message || "Failed to create profile");
-    }
+  if (!user) {
+    console.log("NO USER -> abort");
+    return mapAuthResponse(data.user, data.session);
+  }
+
+  const { error: profileError } = await supabase
+    .from("profiles")
+    .upsert(
+      {
+        id: user.id,
+        user_id: user.id,
+        full_name,
+        email,
+        phone: "",
+        location: "",
+        profile_image: null,
+      },
+      { onConflict: "user_id" }
+    );
+
+  if (profileError) {
+    throw new Error(profileError.message || "Failed to create profile");
   }
 
   return mapAuthResponse(data.user, data.session);

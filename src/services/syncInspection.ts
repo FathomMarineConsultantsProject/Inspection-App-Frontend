@@ -1,7 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { createClient } from "@supabase/supabase-js";
-import Constants from "expo-constants";
 import { jwtDecode } from "jwt-decode";
+import { supabase } from "../supabaseClient";
 import {
     parseInspectionsFromStorage,
     type Inspection,
@@ -10,22 +9,7 @@ import { loadScopedInspectionsWithMigration } from "../utils/storageScope";
 
 const USER_KEY = "user";
 
-const extra = Constants.expoConfig?.extra as
-  | { supabaseUrl?: string; supabaseKey?: string }
-  | undefined;
-
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || extra?.supabaseUrl;
-const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || extra?.supabaseKey;
-
-const supabase =
-  supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
-
 export async function syncInspection(inspection: Inspection): Promise<boolean> {
-  if (!supabase) {
-    console.log("FAILED:", inspection.id);
-    return false;
-  }
-
   try {
     const storedUser = await AsyncStorage.getItem(USER_KEY);
     const token = await AsyncStorage.getItem("token");

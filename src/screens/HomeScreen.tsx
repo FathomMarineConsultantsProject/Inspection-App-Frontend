@@ -1,7 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "@react-navigation/native";
-import { createClient } from "@supabase/supabase-js";
-import Constants from "expo-constants";
 import * as SecureStore from "expo-secure-store";
 import React, { useCallback, useEffect, useState } from "react";
 import {
@@ -18,22 +16,13 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import useOffline from "../hooks/useOffline";
 import { useAuth } from "../context/AuthContext";
 import { syncPendingInspections } from "../services/syncInspection";
+import { supabase } from "../supabaseClient";
 import { COLORS } from "../theme/colors";
 import type { Inspection } from "../utils/inspectionStorage";
 import { parseInspectionsFromStorage } from "../utils/inspectionStorage";
 import { loadScopedInspectionsWithMigration } from "../utils/storageScope";
 
 const USER_NAME_KEY = "user_name";
-
-const extra = Constants.expoConfig?.extra as
-  | { supabaseUrl?: string; supabaseKey?: string }
-  | undefined;
-
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || extra?.supabaseUrl;
-const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || extra?.supabaseKey;
-
-const supabase =
-  supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
 
 function formatInspectionDate(createdAt: number) {
   return new Date(createdAt).toLocaleDateString("en-GB", {

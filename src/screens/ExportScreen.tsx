@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
-import { generateAndSharePdf, GeneratePdfOptions } from "../utils/pdfGenerator";
+import { generateAndSharePdf, type GeneratePdfOptions } from "../utils/pdfExports";
 
 type ExportRouteParams = {
   Export: GeneratePdfOptions;
@@ -118,7 +118,7 @@ export default function ExportScreen() {
 
               <View style={styles.coverTitleBlock}>
                 <Text style={styles.poweredText}>
-                  Powered by Fathom Marine consultants
+                  Powered by Fathom-Nexport
                 </Text>
                 <Text style={styles.coverTitle}>INSPECTION REPORT</Text>
               </View>

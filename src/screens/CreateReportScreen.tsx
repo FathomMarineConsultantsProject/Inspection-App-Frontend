@@ -23,6 +23,7 @@ import { syncPendingInspections } from "../services/syncInspection";
 import type { Inspection } from "../utils/inspectionStorage";
 import { addToSyncQueue, parseInspectionsFromStorage } from "../utils/inspectionStorage";
 import { persistImage } from "../utils/persistImage";
+import { processImage, processImages } from "../utils/processImage";
 import { loadScopedInspectionsWithMigration } from "../utils/storageScope";
 
 type Props = {
@@ -33,6 +34,7 @@ type Props = {
 type ReportImage = {
   id: string;
   uri: string;
+  exportUri?: string;
   description: string;
   originalUri?: string;
   croppedUri?: string;
@@ -42,6 +44,10 @@ const IMAGES_PER_PAGE_OPTIONS = [2, 4, 6, 8] as const;
 
 function makeId() {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+
+function yieldToUI(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 export default function CreateReportScreen({ navigation, route }: Props) {
@@ -92,11 +98,14 @@ export default function CreateReportScreen({ navigation, route }: Props) {
     });
 
     if (result.canceled) return;
+    const originalUris = result.assets.map((asset) => asset.uri);
+    const processedUris = await processImages(originalUris);
 
-    const newItems: ReportImage[] = result.assets.map((a) => ({
+    const newItems: ReportImage[] = result.assets.map((asset, index) => ({
       id: makeId(),
-      uri: a.uri,
-      originalUri: a.uri,
+      uri: processedUris[index] || asset.uri,
+      exportUri: processedUris[index] || asset.uri,
+      originalUri: asset.uri,
       description: "",
     }));
 
@@ -127,9 +136,11 @@ export default function CreateReportScreen({ navigation, route }: Props) {
       const photo = await cam.takePictureAsync({ quality: 0.8 });
 
       if (photo?.uri) {
+        const processedUri = await processImage(photo.uri);
         const newItem: ReportImage = {
           id: makeId(),
-          uri: photo.uri,
+          uri: processedUri,
+          exportUri: processedUri,
           originalUri: photo.uri,
           description: "",
         };
@@ -167,10 +178,16 @@ export default function CreateReportScreen({ navigation, route }: Props) {
 
       if (!result.canceled && result.assets[0]) {
         const newUri = result.assets[0].uri;
+        const processedUri = await processImage(newUri);
         setItems((prev) =>
           prev.map((img) =>
             img.id === item.id
-              ? { ...img, uri: newUri, originalUri: newUri }
+              ? {
+                  ...img,
+                  uri: processedUri,
+                  exportUri: processedUri,
+                  originalUri: newUri,
+                }
               : img,
           ),
         );
@@ -186,24 +203,32 @@ export default function CreateReportScreen({ navigation, route }: Props) {
       return;
     }
 
-    const safeImages = await Promise.all(
-      items.map(async (item) => {
-        const persistedUri = await persistImage(item.uri);
-        const persistedOriginalUri = item.originalUri
-          ? await persistImage(item.originalUri)
-          : undefined;
-        const persistedCroppedUri = item.croppedUri
-          ? await persistImage(item.croppedUri)
-          : undefined;
+    const safeImages: ReportImage[] = [];
+    for (let i = 0; i < items.length; i += 1) {
+      const item = items[i];
+      const persistedUri = await persistImage(item.uri);
+      const persistedExportUri = item.exportUri
+        ? await persistImage(item.exportUri)
+        : persistedUri;
+      const persistedOriginalUri = item.originalUri
+        ? await persistImage(item.originalUri)
+        : undefined;
+      const persistedCroppedUri = item.croppedUri
+        ? await persistImage(item.croppedUri)
+        : undefined;
 
-        return {
-          ...item,
-          uri: persistedUri,
-          originalUri: persistedOriginalUri,
-          croppedUri: persistedCroppedUri,
-        };
-      }),
-    );
+      safeImages.push({
+        ...item,
+        uri: persistedUri,
+        exportUri: persistedExportUri,
+        originalUri: persistedOriginalUri,
+        croppedUri: persistedCroppedUri,
+      });
+
+      if ((i + 1) % 4 === 0) {
+        await yieldToUI();
+      }
+    }
     const cleanedImages = safeImages.filter(
       (img) => !!img && typeof img.uri === "string",
     );
