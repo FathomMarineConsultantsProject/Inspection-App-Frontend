@@ -1,32 +1,32 @@
-import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as FileSystem from "expo-file-system/legacy";
-import * as ImagePicker from "expo-image-picker";
 import * as Sharing from "expo-sharing";
 import React, { useEffect, useMemo, useState } from "react";
 import {
     Alert,
+    FlatList,
     Image,
-    Keyboard,
-    Pressable,
+    ScrollView,
+    StyleSheet,
     Text,
-    TextInput,
-    TouchableWithoutFeedback,
+    useWindowDimensions,
     View,
+    type NativeScrollEvent,
+    type NativeSyntheticEvent,
 } from "react-native";
-import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
+import { SafeAreaView } from "react-native-safe-area-context";
 import PrimaryButton from "../components/PrimaryButton";
 import { useAuth } from "../context/AuthContext";
 import { syncPendingInspections } from "../services/syncInspection";
-import { COLORS } from "../theme/colors";
 import { generateAndShareDocx } from "../utils/docxExport";
 import {
     parseInspectionsFromStorage,
     type ExportType,
+    type Inspection,
+    type ReportImage,
 } from "../utils/inspectionStorage";
 import { generatePDF } from "../utils/nativePdfGenerator";
 import { persistImage } from "../utils/persistImage";
-import { processImage, processImages } from "../utils/processImage";
 import { loadScopedInspectionsWithMigration } from "../utils/storageScope";
 
 type PreviewReportImage = {
@@ -34,25 +34,61 @@ type PreviewReportImage = {
   uri: string;
   exportUri?: string;
   description: string;
+  title?: string;
   originalUri?: string;
   croppedUri?: string;
 };
+
+function chunkByPage<T>(items: T[], size: number): T[][] {
+  if (size <= 0) {
+    return [items];
+  }
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
+function getColumns(imagesPerPage: number): 1 | 2 {
+  return imagesPerPage === 2 ? 1 : 2;
+}
+
+function getImageHeight(imagesPerPage: number, columns: 1 | 2): number {
+  if (columns === 1) {
+    return 170;
+  }
+  if (imagesPerPage <= 4) {
+    return 138;
+  }
+  if (imagesPerPage <= 6) {
+    return 110;
+  }
+  return 88;
+}
 
 function yieldToUI(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 export default function ReportPreviewScreen({ navigation, route }: any) {
-  const { ship, report } = route.params;
+  const routeShip = route.params?.ship || {};
+  const routeReport = route.params?.report;
   const { user } = useAuth();
-  const { inspectionId } = route.params;
+  const { width } = useWindowDimensions();
+
+  const inspectionId = route.params?.inspectionId as string | undefined;
   const existingCreatedAt = route.params?.inspectionCreatedAt as number | undefined;
-  const [shipInfo, setShipInfo] = useState(ship);
-  const [imagesPerPage, setImagesPerPage] = useState(report?.imagesPerPage ?? 2);
+
+  const [shipInfo, setShipInfo] = useState(routeShip);
+  const [imagesPerPage, setImagesPerPage] = useState<number>(
+    routeReport?.imagesPerPage ?? 2,
+  );
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState<null | "pdf" | "doc">(null);
   const [exportedAs, setExportedAs] = useState<ExportType | undefined>(undefined);
   const [exportedAt, setExportedAt] = useState<string | undefined>(undefined);
+  const [currentPage, setCurrentPage] = useState(0);
 
   const [images, setImages] = useState<PreviewReportImage[]>(
     route.params?.images ?? route.params?.report?.images ?? [],
@@ -61,25 +97,53 @@ export default function ReportPreviewScreen({ navigation, route }: any) {
   const safeImages = useMemo(
     () =>
       (images || []).filter(
-        (img) => !!img && typeof img.uri === "string" && img.uri,
+        (img): img is PreviewReportImage =>
+          !!img && typeof img.uri === "string" && img.uri.length > 0,
       ),
     [images],
   );
 
+  const safeImagesPerPage = useMemo(() => {
+    if (imagesPerPage === 2 || imagesPerPage === 4 || imagesPerPage === 6 || imagesPerPage === 8) {
+      return imagesPerPage;
+    }
+    return 2;
+  }, [imagesPerPage]);
+
+  const previewPages = useMemo(
+    () => chunkByPage(safeImages, safeImagesPerPage),
+    [safeImages, safeImagesPerPage],
+  );
+
+  const columns = useMemo(() => getColumns(safeImagesPerPage), [safeImagesPerPage]);
+  const imageHeight = useMemo(
+    () => getImageHeight(safeImagesPerPage, columns),
+    [safeImagesPerPage, columns],
+  );
+  const pageWidth = Math.max(width - 32, 1);
+  const rowsPerPage = Math.ceil(safeImagesPerPage / columns);
+  const pagerHeight = rowsPerPage * (imageHeight + 56) + (rowsPerPage - 1) * 10 + 12;
+
   useEffect(() => {
-    console.log("IMAGES RECEIVED:", route.params?.images ?? route.params?.report?.images ?? []);
-  }, [route.params?.images, route.params?.report?.images]);
+    setCurrentPage((prev) =>
+      Math.min(prev, Math.max(previewPages.length - 1, 0)),
+    );
+  }, [previewPages.length]);
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadExistingInspectionForEdit() {
-      if (!inspectionId) return;
+      if (!inspectionId) {
+        return;
+      }
       try {
         const { data: existing } = await loadScopedInspectionsWithMigration(user?.id);
         const list = parseInspectionsFromStorage(existing);
         const current = list.find((item) => item.id === inspectionId);
-        if (!current || cancelled) return;
+        if (!current || cancelled) {
+          return;
+        }
 
         const validInspection = {
           ...current,
@@ -118,10 +182,9 @@ export default function ReportPreviewScreen({ navigation, route }: any) {
         }
       }
 
-      const uris = [
-        shipInfo?.shipPhotoUri,
-        ...safeImages.map((img) => img.uri),
-      ].filter((uri): uri is string => !!uri);
+      const uris = [shipInfo?.shipPhotoUri, ...safeImages.map((img) => img.uri)].filter(
+        (uri): uri is string => !!uri,
+      );
 
       await Promise.all(
         uris.map(async (uri) => {
@@ -136,92 +199,20 @@ export default function ReportPreviewScreen({ navigation, route }: any) {
     void checkImageUrisExist();
   }, [safeImages, shipInfo?.shipPhotoUri]);
 
-  function updateDescription(id: string, text: string) {
-    setImages((prev) =>
-      prev.map((img, i) =>
-        String(img.id ?? i) === id ? { ...img, description: text } : img,
-      ),
-    );
-  }
-
-  async function handleReplaceImageAt(index: number) {
-    try {
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (perm.status !== "granted") {
-        Alert.alert("Permission needed", "Please allow gallery access.");
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        const newUri = result.assets[0].uri;
-        const processedUri = await processImage(newUri);
-        setImages((prev) =>
-          prev.map((img, i) =>
-            i === index
-              ? {
-                  ...img,
-                  uri: processedUri,
-                  exportUri: processedUri,
-                  originalUri: newUri,
-                }
-              : img,
-          ),
-        );
-      }
-    } catch (e) {
-      console.log("Crop error", e);
-    }
-  }
-
-  async function handleAddImages() {
-    try {
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (perm.status !== "granted") {
-        Alert.alert("Permission needed", "Please allow gallery access.");
-        return;
-      }
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ["images"],
-        quality: 0.8,
-        allowsMultipleSelection: true,
-        selectionLimit: 10,
-      });
-      if (result.canceled) return;
-      const originalUris = result.assets.map((asset) => asset.uri);
-      const processedUris = await processImages(originalUris);
-
-      const newImages: PreviewReportImage[] = result.assets.map((asset, index) => ({
-        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        uri: processedUris[index] || asset.uri,
-        exportUri: processedUris[index] || asset.uri,
-        originalUri: asset.uri,
-        description: "",
-      }));
-      setImages((prev) => [...prev, ...newImages]);
-    } catch (e) {
-      console.log("Add image error", e);
-    }
-  }
-
-  function handleDeleteImageAt(index: number) {
-    setImages((prev) => prev.filter((_, i) => i !== index));
-  }
-
   async function prepareImagesForExport(): Promise<PreviewReportImage[]> {
     const prepared = [...safeImages];
     setImages(prepared);
     return prepared;
   }
 
-  function toExportImages(items: PreviewReportImage[]) {
-    return items.map((img) => ({
-      ...img,
+  function toExportImages(items: PreviewReportImage[]): ReportImage[] {
+    return items.map((img, index) => ({
+      id: img.id || `img-${index}`,
       uri: img.exportUri || img.uri,
+      exportUri: img.exportUri || img.uri,
+      description: img.description || "",
+      originalUri: img.originalUri,
+      croppedUri: img.croppedUri,
     }));
   }
 
@@ -247,18 +238,17 @@ export default function ReportPreviewScreen({ navigation, route }: any) {
       setExportedAs(exportType);
       setExportedAt(timestamp);
     } catch {
-      // ignore
+      // Ignore local export tracking failures.
     }
   }
 
   async function exportPDF() {
     try {
       setExporting("pdf");
-      console.log("PDF export started");
       const prepared = await prepareImagesForExport();
       const pdfPath = await generatePDF({
         images: toExportImages(prepared),
-        imagesPerPage: imagesPerPage,
+        imagesPerPage: safeImagesPerPage,
         reportDetails: {
           companyName: shipInfo?.companyName || shipInfo?.shipName || "Inspection Report",
           shipName: shipInfo?.shipName,
@@ -300,7 +290,7 @@ export default function ReportPreviewScreen({ navigation, route }: any) {
       await generateAndShareDocx({
         shipInfo,
         images: toExportImages(prepared),
-        imagesPerPage,
+        imagesPerPage: safeImagesPerPage,
       });
 
       if (inspectionId) {
@@ -318,17 +308,21 @@ export default function ReportPreviewScreen({ navigation, route }: any) {
   }
 
   async function handleSaveDraft() {
-    if (saving) return;
+    if (saving) {
+      return;
+    }
     if (!inspectionId) {
       Alert.alert("Error", "Inspection id missing");
       return;
     }
+
     setSaving(true);
     try {
       const { key, data: existing } = await loadScopedInspectionsWithMigration(user?.id);
       const list = parseInspectionsFromStorage(existing);
-      const inspection = list.find((i) => i.id === inspectionId);
+      const inspection = list.find((item) => item.id === inspectionId);
       const now = Date.now();
+
       const persistedShipPhotoUri = shipInfo.shipPhotoUri
         ? await persistImage(shipInfo.shipPhotoUri)
         : undefined;
@@ -336,31 +330,32 @@ export default function ReportPreviewScreen({ navigation, route }: any) {
         ? await persistImage(shipInfo.companyLogoUri)
         : undefined;
 
-      const updatedInspection = {
+      const updatedInspection: Inspection = {
         id: inspectionId,
         userId: inspection?.userId || user?.id || null,
         createdAt: existingCreatedAt || now,
         updatedAt: now,
-        status: "draft" as const,
-        syncStatus: "pending" as const,
-        exported_as: inspection?.exported_as ?? null,
-        exported_at: inspection?.exported_at ?? null,
+        status: "draft",
+        syncStatus: "pending",
+        exported_as: inspection?.exported_as,
+        exported_at: inspection?.exported_at,
         ship: {
           ...shipInfo,
           shipPhotoUri: persistedShipPhotoUri,
           companyLogoUri: persistedCompanyLogoUri,
         },
         report: {
-          images: [] as PreviewReportImage[],
-          imagesPerPage,
+          images: [],
+          imagesPerPage: safeImagesPerPage,
         },
       };
 
-      for (let i = 0; i < images.length; i += 1) {
-        const img = images[i];
+      for (let i = 0; i < safeImages.length; i += 1) {
+        const img = safeImages[i];
         const persistedUri = await persistImage(img.uri);
+
         updatedInspection.report.images.push({
-          ...img,
+          id: img.id || `${inspectionId}-${i}`,
           uri: persistedUri,
           exportUri: img.exportUri
             ? await persistImage(img.exportUri)
@@ -371,6 +366,7 @@ export default function ReportPreviewScreen({ navigation, route }: any) {
           croppedUri: img.croppedUri
             ? await persistImage(img.croppedUri)
             : undefined,
+          description: img.description || "",
         });
 
         if ((i + 1) % 4 === 0) {
@@ -378,11 +374,7 @@ export default function ReportPreviewScreen({ navigation, route }: any) {
         }
       }
 
-      const updated = [
-        updatedInspection,
-        ...list.filter((i) => i.id !== inspectionId),
-      ];
-
+      const updated = [updatedInspection, ...list.filter((item) => item.id !== inspectionId)];
       await AsyncStorage.setItem(key, JSON.stringify(updated));
       await syncPendingInspections(user?.id);
       Alert.alert("Saved", "Inspection updated successfully");
@@ -396,174 +388,233 @@ export default function ReportPreviewScreen({ navigation, route }: any) {
     }
   }
 
+  function onPreviewPagerScroll(event: NativeSyntheticEvent<NativeScrollEvent>) {
+    if (pageWidth <= 0) {
+      return;
+    }
+    const index = Math.round(event.nativeEvent.contentOffset.x / pageWidth);
+    const bounded = Math.min(Math.max(index, 0), Math.max(previewPages.length - 1, 0));
+    setCurrentPage(bounded);
+  }
+
+  const renderPreviewPage = ({ item, index }: { item: PreviewReportImage[]; index: number }) => {
+    const cardWidth = columns === 1 ? pageWidth : (pageWidth - 10) / 2;
+    return (
+      <View style={[styles.previewPage, { width: pageWidth }]}>
+        <FlatList
+          data={item}
+          key={`${columns}-${safeImagesPerPage}-${index}`}
+          keyExtractor={(img, imgIndex) => `${img.id ?? img.uri}-${imgIndex}`}
+          numColumns={columns}
+          scrollEnabled={false}
+          columnWrapperStyle={columns === 2 ? styles.previewRow : undefined}
+          renderItem={({ item: img }) => (
+            <View style={[styles.previewCard, { width: cardWidth }]}>
+              <Image source={{ uri: img.uri }} resizeMode="cover" style={[styles.previewImage, { height: imageHeight }]} />
+              {img.title ? (
+                <Text numberOfLines={1} style={styles.imageTitle}>
+                  {img.title}
+                </Text>
+              ) : null}
+              <Text numberOfLines={3} style={styles.imageDescription}>
+                {img.description?.trim() || "No description"}
+              </Text>
+            </View>
+          )}
+        />
+      </View>
+    );
+  };
+
   return (
-    <View style={{ flex: 1 }}>
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-        <KeyboardAwareScrollView
-          enableOnAndroid={true}
-          extraScrollHeight={120}
-          contentContainerStyle={{ flexGrow: 1, padding: 16, paddingBottom: 140 }}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="interactive"
-        >
-      <Text style={{ fontSize: 24, fontWeight: "800", marginBottom: 10 }}>
-        Report Preview
-      </Text>
-
-      <View style={{ marginBottom: 12 }}>
-        <Text style={{ fontWeight: "800" }}>Ship Name:</Text>
-        <Text>{shipInfo.shipName}</Text>
-      </View>
-
-      <View style={{ marginBottom: 12 }}>
-        <Text style={{ fontWeight: "800" }}>Ship Type:</Text>
-        <Text>{shipInfo.shipType}</Text>
-      </View>
-
-      <View style={{ marginBottom: 12 }}>
-        <Text style={{ fontWeight: "800" }}>Inspector:</Text>
-        <Text>{shipInfo.inspectorName ?? shipInfo.surveyorName ?? "-"}</Text>
-      </View>
-
-      {exportedAs ? (
-        <View style={{ marginBottom: 12 }}>
-          <Text style={{ fontWeight: "800" }}>
-            Exported as {exportedAs.toUpperCase()}
-          </Text>
-          {exportedAt ? (
-            <Text>
-              {new Date(exportedAt).toLocaleString("en-GB", {
-                day: "2-digit",
-                month: "short",
-                year: "numeric",
-                hour: "numeric",
-                minute: "2-digit",
-              })}
-            </Text>
-          ) : null}
-        </View>
-      ) : null}
-
-      {!!shipInfo.shipPhotoUri && (
-        <Image
-          source={{ uri: shipInfo.shipPhotoUri }}
-          onError={() => console.log("Image failed:", shipInfo.shipPhotoUri)}
-          resizeMode="cover"
-          style={{
-            width: "100%",
-            height: 180,
-            borderRadius: 12,
-            marginBottom: 16,
-          }}
-        />
-      )}
-
-      <Text style={{ fontWeight: "800", marginBottom: 8 }}>
-        Report Photos: {safeImages.length} (Images per page: {imagesPerPage})
-      </Text>
-
-      <Pressable
-        onPress={() => void handleAddImages()}
-        style={{
-          width: "100%",
-          marginVertical: 12,
-          minHeight: 52,
-          paddingVertical: 15,
-          borderRadius: 14,
-          backgroundColor: COLORS.primary,
-          alignItems: "center",
-          justifyContent: "center",
-          shadowColor: COLORS.primary,
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.2,
-          shadowRadius: 10,
-          elevation: 4,
-        }}
+    <SafeAreaView style={styles.safeArea} edges={["left", "right", "bottom"]}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
       >
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <Ionicons name="add" size={18} color="#FFFFFF" />
-          <Text style={{ fontWeight: "800", color: "#FFFFFF" }}>Add Images</Text>
-        </View>
-      </Pressable>
+        <Text style={styles.title}>Report Preview</Text>
 
-      {safeImages.map((img: any, index: number) => (
-        <View key={img.id ?? img.uri} style={{ marginBottom: 14 }}>
-          <Image
-            source={{ uri: img.uri }}
-            onError={() => console.log("Image failed:", img.uri)}
-            resizeMode="cover"
-            style={{ width: "100%", height: 180, borderRadius: 12 }}
-          />
-          <View style={{ flexDirection: "row", gap: 8, marginTop: 8, marginBottom: 2 }}>
-            <Pressable
-              onPress={() => void handleReplaceImageAt(index)}
-              style={{
-                flex: 1,
-                paddingHorizontal: 10,
-                paddingVertical: 6,
-                borderRadius: 8,
-                backgroundColor: "#E5E7EB",
-              }}
-            >
-              <Text style={{ fontWeight: "700", color: "#111827", textAlign: "center" }}>
-                Replace Image
+        <View style={styles.metaBlock}>
+          <Text style={styles.metaLabel}>Ship Name:</Text>
+          <Text style={styles.metaValue}>{shipInfo.shipName || "-"}</Text>
+        </View>
+
+        <View style={styles.metaBlock}>
+          <Text style={styles.metaLabel}>Ship Type:</Text>
+          <Text style={styles.metaValue}>{shipInfo.shipType || "-"}</Text>
+        </View>
+
+        <View style={styles.metaBlock}>
+          <Text style={styles.metaLabel}>Inspector:</Text>
+          <Text style={styles.metaValue}>{shipInfo.inspectorName ?? shipInfo.surveyorName ?? "-"}</Text>
+        </View>
+
+        {exportedAs ? (
+          <View style={styles.metaBlock}>
+            <Text style={styles.metaLabel}>Exported as {exportedAs.toUpperCase()}</Text>
+            {exportedAt ? (
+              <Text style={styles.metaValue}>
+                {new Date(exportedAt).toLocaleString("en-GB", {
+                  day: "2-digit",
+                  month: "short",
+                  year: "numeric",
+                  hour: "numeric",
+                  minute: "2-digit",
+                })}
               </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => handleDeleteImageAt(index)}
-              style={{
-                flex: 1,
-                paddingHorizontal: 10,
-                paddingVertical: 6,
-                borderRadius: 8,
-                backgroundColor: "#E5E7EB",
-              }}
-            >
-              <Text style={{ fontWeight: "700", color: "#111827", textAlign: "center" }}>
-                Delete Image
-              </Text>
-            </Pressable>
+            ) : null}
           </View>
-          <Text style={{ marginTop: 8, fontWeight: "800" }}>Image description:</Text>
-          <TextInput
-            value={img.description || ""}
-            onChangeText={(text) => updateDescription(String(img.id ?? index), text)}
-            placeholder="Enter description"
-            placeholderTextColor="#888"
-            multiline
-            style={{
-              borderWidth: 1,
-              borderColor: "#ddd",
-              borderRadius: 10,
-              padding: 10,
-              marginTop: 8,
-              minHeight: 72,
-              textAlignVertical: "top",
-            }}
+        ) : null}
+
+        {!!shipInfo.shipPhotoUri && (
+          <Image source={{ uri: shipInfo.shipPhotoUri }} resizeMode="cover" style={styles.shipPhoto} />
+        )}
+
+        <Text style={styles.sectionTitle}>
+          Layout preview: {safeImages.length} photos ({safeImagesPerPage} per page)
+        </Text>
+
+        {previewPages.length > 0 ? (
+          <>
+            <FlatList
+              horizontal
+              data={previewPages}
+              pagingEnabled
+              keyExtractor={(_, index) => `preview-page-${index}`}
+              showsHorizontalScrollIndicator={false}
+              onMomentumScrollEnd={onPreviewPagerScroll}
+              style={{ height: pagerHeight }}
+              initialNumToRender={1}
+              maxToRenderPerBatch={2}
+              windowSize={3}
+              removeClippedSubviews
+              renderItem={renderPreviewPage}
+            />
+
+            <Text style={styles.pageIndicator}>
+              Page {currentPage + 1} of {previewPages.length}
+            </Text>
+          </>
+        ) : (
+          <View style={styles.emptyPreview}>
+            <Text style={styles.emptyPreviewText}>No images to preview yet.</Text>
+          </View>
+        )}
+
+        <View style={styles.actionGroup}>
+          <PrimaryButton
+            title={exporting === "pdf" ? "Exporting..." : "Export as PDF"}
+            onPress={exportPDF}
+            disabled={exporting !== null}
+          />
+          <PrimaryButton
+            title={exporting === "doc" ? "Exporting..." : "Export as DOC"}
+            onPress={exportDOCX}
+            disabled={exporting !== null}
+          />
+          <PrimaryButton
+            title={saving ? "Saving..." : "Save Inspection"}
+            onPress={handleSaveDraft}
+            loading={saving}
+            disabled={saving}
           />
         </View>
-      ))}
-
-      <View style={{ gap: 10, marginTop: 10 }}>
-        <PrimaryButton
-          title={exporting === "pdf" ? "Exporting..." : "Export as PDF"}
-          onPress={exportPDF}
-          disabled={exporting !== null}
-        />
-        <PrimaryButton
-          title={exporting === "doc" ? "Exporting..." : "Export as DOC"}
-          onPress={exportDOCX}
-          disabled={exporting !== null}
-        />
-        <PrimaryButton
-          title={saving ? "Saving..." : "Save Inspection"}
-          onPress={handleSaveDraft}
-          loading={saving}
-          disabled={saving}
-        />
-      </View>
-        </KeyboardAwareScrollView>
-      </TouchableWithoutFeedback>
-    </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: "#F7F9FC",
+  },
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 140,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: "800",
+    color: "#111827",
+    marginBottom: 12,
+  },
+  metaBlock: {
+    marginBottom: 10,
+  },
+  metaLabel: {
+    fontWeight: "800",
+    color: "#111827",
+  },
+  metaValue: {
+    marginTop: 2,
+    color: "#374151",
+  },
+  shipPhoto: {
+    width: "100%",
+    height: 180,
+    borderRadius: 12,
+    marginTop: 6,
+    marginBottom: 14,
+  },
+  sectionTitle: {
+    fontWeight: "800",
+    color: "#111827",
+    marginBottom: 8,
+  },
+  previewPage: {
+    paddingBottom: 8,
+  },
+  previewRow: {
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  previewCard: {
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 10,
+    padding: 8,
+    backgroundColor: "#FFFFFF",
+    marginBottom: 10,
+  },
+  previewImage: {
+    width: "100%",
+    borderRadius: 8,
+    backgroundColor: "#E5E7EB",
+  },
+  imageTitle: {
+    marginTop: 7,
+    fontWeight: "800",
+    color: "#111827",
+  },
+  imageDescription: {
+    marginTop: 5,
+    color: "#4B5563",
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  pageIndicator: {
+    marginTop: 8,
+    textAlign: "center",
+    color: "#374151",
+    fontWeight: "700",
+  },
+  emptyPreview: {
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 12,
+    backgroundColor: "#FFFFFF",
+    paddingVertical: 28,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyPreviewText: {
+    color: "#6B7280",
+    fontWeight: "600",
+  },
+  actionGroup: {
+    marginTop: 14,
+    gap: 10,
+  },
+});

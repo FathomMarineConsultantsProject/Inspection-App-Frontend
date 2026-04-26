@@ -1,22 +1,39 @@
-import React from "react";
+import { Ionicons } from "@expo/vector-icons";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { Ionicons } from "@expo/vector-icons";
+import React from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { COLORS } from "../theme/colors";
 
 
 import HomeScreen from "../screens/HomeScreen";
-import ShipInfoScreen from "../screens/ShipInfoScreen";
-import CreateReportScreen from "../screens/CreateReportScreen";
-import ReportPreviewScreen from "../screens/ReportPreviewScreen";
+import ImageProcessingScreen from "../screens/ImageProcessingScreen";
+import LayoutSelectionScreen from "../screens/LayoutSelectionScreen";
 import ProfileScreen from "../screens/ProfileScreen";
+import ReportPreviewScreen from "../screens/ReportPreviewScreen";
+import ShipInfoScreen from "../screens/ShipInfoScreen";
+import type { InspectionShip, ReportImage } from "../utils/inspectionStorage";
 
 export type AppStackParamList = {
   HomeMain: undefined;
-  ShipInfo: undefined;
-  CreateReport: { ship: any };
-  ReportPreview: { ship: any; report: { imageUris: string[] } };
+  ShipInfo: { ship?: Partial<InspectionShip> } | undefined;
+  InspectionDetails: { ship?: Partial<InspectionShip> } | undefined;
+  CreateReport: { ship: InspectionShip };
+  ImageProcessing: { ship: InspectionShip };
+  LayoutSelection: {
+    ship: InspectionShip;
+    images: (ReportImage & { title?: string })[];
+  };
+  ReportPreview: {
+    ship: InspectionShip;
+    inspectionId?: string;
+    inspectionCreatedAt?: number;
+    images?: (ReportImage & { title?: string })[];
+    report?: {
+      imagesPerPage: number;
+      images: (ReportImage & { title?: string })[];
+    };
+  };
 };
 
 const HomeStack = createNativeStackNavigator<AppStackParamList>();
@@ -35,18 +52,37 @@ function HomeStackNavigator() {
         }}
       />
       <HomeStack.Screen
-        name="ShipInfo"
+        name="InspectionDetails"
         component={ShipInfoScreen}
         options={{
-          title: "Ship Information",
+          title: "Inspection Details",
           headerBackTitle: "Home",
           headerBackTitleVisible: true,
         }}
       />
       <HomeStack.Screen
+        name="ShipInfo"
+        component={ShipInfoScreen}
+        options={{
+          title: "Inspection Details",
+          headerBackTitle: "Home",
+          headerBackTitleVisible: true,
+        }}
+      />
+      <HomeStack.Screen
+        name="ImageProcessing"
+        component={ImageProcessingScreen}
+        options={{ title: "Image Processing" }}
+      />
+      <HomeStack.Screen
         name="CreateReport"
-        component={CreateReportScreen}
-        options={{ title: "Create Report" }}
+        component={ImageProcessingScreen}
+        options={{ title: "Image Processing" }}
+      />
+      <HomeStack.Screen
+        name="LayoutSelection"
+        component={LayoutSelectionScreen}
+        options={{ title: "Layout Selection" }}
       />
       <HomeStack.Screen
         name="ReportPreview"

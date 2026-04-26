@@ -3,18 +3,18 @@ import { useFocusEffect } from "@react-navigation/native";
 import * as SecureStore from "expo-secure-store";
 import React, { useCallback, useEffect, useState } from "react";
 import {
-  Platform,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
+    Platform,
+    Pressable,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
-import useOffline from "../hooks/useOffline";
 import { useAuth } from "../context/AuthContext";
+import useOffline from "../hooks/useOffline";
 import { syncPendingInspections } from "../services/syncInspection";
 import { supabase } from "../supabaseClient";
 import { COLORS } from "../theme/colors";
@@ -211,7 +211,7 @@ export default function HomeScreen({ navigation }: any) {
           <Text style={styles.subText}>Ready to create a new inspection?</Text>
         </View>
 
-        <Pressable style={styles.createCard} onPress={() => navigation.navigate("ShipInfo")}>
+        <Pressable style={styles.createCard} onPress={() => navigation.navigate("InspectionDetails")}>
           <Text style={styles.createTitle}>Create Inspection</Text>
           <Text style={styles.createSubText}>Start a new vessel inspection report</Text>
         </Pressable>

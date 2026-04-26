@@ -1,23 +1,23 @@
+import { Ionicons } from "@expo/vector-icons";
+import DateTimePicker from "@react-native-community/datetimepicker";
+import { useRoute } from "@react-navigation/native";
+import * as ImagePicker from "expo-image-picker";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Alert,
-  Image,
-  Keyboard,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableWithoutFeedback,
-  View,
-  TextInput,
+    Alert,
+    Image,
+    Keyboard,
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableWithoutFeedback,
+    View,
 } from "react-native";
-import * as ImagePicker from "expo-image-picker";
-import DateTimePicker from "@react-native-community/datetimepicker";
-import { Ionicons } from "@expo/vector-icons";
-import { useRoute } from "@react-navigation/native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import Input from "../components/Input";
@@ -157,7 +157,7 @@ export default function ShipInfoScreen({ navigation }: any) {
       return;
     }
 
-    navigation.navigate("CreateReport", {
+    navigation.navigate("ImageProcessing", {
       ship: {
         shipName: shipName.trim(),
         shipType: shipType.trim(),
@@ -308,7 +308,7 @@ export default function ShipInfoScreen({ navigation }: any) {
             />
 
             <View style={styles.buttonWrap}>
-              <PrimaryButton title="Next: Create Report" onPress={onNext} />
+              <PrimaryButton title="Next: Process Images" onPress={onNext} />
             </View>
           </ScrollView>
         </TouchableWithoutFeedback>

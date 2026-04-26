@@ -1,5 +1,6 @@
+import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
-import PDFLib, { PDFDocument, PDFPage } from "react-native-pdf-lib";
+import { PDFDocument, PDFPage } from "react-native-pdf-lib";
 
 export interface ReportImage {
   uri: string;
@@ -143,12 +144,24 @@ async function buildOutputPath(
   if (explicitOutputPath) {
     return sanitizePath(explicitOutputPath);
   }
-  const docsDir = await PDFLib.getDocumentsDirectory();
+
+  const legacyCacheDirectory = (FileSystem as { cacheDirectory?: string | null })
+    .cacheDirectory;
+  const cacheDirectory = legacyCacheDirectory ?? FileSystem.Paths.cache?.uri;
+
+  if (!cacheDirectory) {
+    throw new Error("FileSystem cacheDirectory not available");
+  }
+
   const ship = sanitizeFileToken(reportDetails?.shipName, "Ship");
   const dateRaw =
     reportDetails?.date || reportDetails?.inspectionDate || new Date().toISOString();
   const date = sanitizeFileToken(String(dateRaw).slice(0, 10), "Date");
-  return `${docsDir}/Ship_Inspection_${ship}_${date}_${Date.now()}.pdf`;
+  const normalizedCacheDirectory = cacheDirectory.endsWith("/")
+    ? cacheDirectory
+    : `${cacheDirectory}/`;
+  const pdfPath = `${normalizedCacheDirectory}Ship_Inspection_${ship}_${date}_${Date.now()}.pdf`;
+  return sanitizePath(pdfPath);
 }
 
 function buildHeaderText(reportDetails?: ShipInfo): {
@@ -175,74 +188,80 @@ function buildHeaderText(reportDetails?: ShipInfo): {
 export async function generatePDF(
   options: GenerateNativePdfOptions,
 ): Promise<string> {
-  const perPage = safePerPage(options.imagesPerPage);
-  const images = options.images || [];
-  const pages = chunkArray(images, perPage);
-  const slots = buildSlots(perPage);
-  const outputPath = await buildOutputPath(options.reportDetails, options.outputPath);
-  const header = buildHeaderText(options.reportDetails);
+  try {
+    const perPage = safePerPage(options.imagesPerPage);
+    const images = options.images || [];
+    const validImages = images.filter((img) => img?.exportUri || img?.uri);
+    const pages = chunkArray(validImages, perPage);
+    const slots = buildSlots(perPage);
+    const outputPath = await buildOutputPath(options.reportDetails, options.outputPath);
+    const header = buildHeaderText(options.reportDetails);
 
-  let pdfDoc = PDFDocument.create(outputPath);
-  let globalImageCount = 0;
+    let pdfDoc = PDFDocument.create(outputPath);
+    let globalImageCount = 0;
 
-  for (let pageIndex = 0; pageIndex < pages.length; pageIndex += 1) {
-    const batch = pages[pageIndex];
-    let page = PDFPage.create()
-      .setMediaBox(PAGE_WIDTH, PAGE_HEIGHT)
-      .drawText(header.title, {
-        x: PAGE_MARGIN_X,
-        y: PAGE_HEIGHT - 30,
-        fontSize: 13,
-        color: "#111111",
-      })
-      .drawText(`Page ${pageIndex + 1}`, {
-        x: PAGE_WIDTH - 92,
-        y: PAGE_HEIGHT - 30,
-        fontSize: 11,
-        color: "#444444",
-      });
+    for (let pageIndex = 0; pageIndex < pages.length; pageIndex += 1) {
+      const batch = pages[pageIndex];
+      let page = PDFPage.create()
+        .setMediaBox(PAGE_WIDTH, PAGE_HEIGHT)
+        .drawText(header.title, {
+          x: PAGE_MARGIN_X,
+          y: PAGE_HEIGHT - 30,
+          fontSize: 13,
+          color: "#111111",
+        })
+        .drawText(`Page ${pageIndex + 1}`, {
+          x: PAGE_WIDTH - 92,
+          y: PAGE_HEIGHT - 30,
+          fontSize: 11,
+          color: "#444444",
+        });
 
-    if (header.subtitle) {
-      page = page.drawText(header.subtitle, {
-        x: PAGE_MARGIN_X,
-        y: PAGE_HEIGHT - 46,
-        fontSize: 10,
-        color: "#666666",
-      });
-    }
-
-    for (let imageIndex = 0; imageIndex < batch.length; imageIndex += 1) {
-      const slot = slots[imageIndex];
-      const image = batch[imageIndex];
-      const rawUri = image.exportUri || image.uri;
-      const imagePath = sanitizePath(rawUri);
-      if (!imagePath || !slot) {
-        continue;
+      if (header.subtitle) {
+        page = page.drawText(header.subtitle, {
+          x: PAGE_MARGIN_X,
+          y: PAGE_HEIGHT - 46,
+          fontSize: 10,
+          color: "#666666",
+        });
       }
 
-      const imageType = inferImageType(imagePath);
-      page = page.drawImage(imagePath, imageType, {
-        x: slot.x,
-        y: slot.y,
-        width: slot.width,
-        height: slot.height,
-      });
+      for (let imageIndex = 0; imageIndex < batch.length; imageIndex += 1) {
+        const slot = slots[imageIndex];
+        const image = batch[imageIndex];
+        const rawUri = image.exportUri || image.uri;
+        const imagePath = sanitizePath(rawUri);
+        if (!imagePath || !slot) {
+          continue;
+        }
 
-      globalImageCount += 1;
-      if (globalImageCount % YIELD_EVERY_IMAGES === 0) {
+        const imageType = inferImageType(imagePath);
+        page = page.drawImage(imagePath, imageType, {
+          x: slot.x,
+          y: slot.y,
+          width: slot.width,
+          height: slot.height,
+        });
+
+        globalImageCount += 1;
+        if (globalImageCount % YIELD_EVERY_IMAGES === 0) {
+          await pause();
+        }
+      }
+
+      pdfDoc = pdfDoc.addPage(page);
+
+      if ((pageIndex + 1) % YIELD_EVERY_PAGES === 0) {
         await pause();
       }
     }
 
-    pdfDoc = pdfDoc.addPage(page);
-
-    if ((pageIndex + 1) % YIELD_EVERY_PAGES === 0) {
-      await pause();
-    }
+    const writtenPath = await pdfDoc.write();
+    return toFileUri(String(writtenPath || outputPath));
+  } catch (e) {
+    console.error("PDF generation failed:", e);
+    throw e;
   }
-
-  const writtenPath = await pdfDoc.write();
-  return toFileUri(String(writtenPath || outputPath));
 }
 
 export async function generateAndSharePDF(
