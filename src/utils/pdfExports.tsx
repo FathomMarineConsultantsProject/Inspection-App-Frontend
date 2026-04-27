@@ -1,33 +1,25 @@
+import type { ExportPdfImage, ExportPdfShipInfo } from "./exportPDF";
 import {
-  generatePDF,
-  generateAndSharePDF,
-  type GeneratePdfOptions,
-  type ReportImage,
-  type ShipInfo,
-} from "./nativePdfGenerator";
+    exportPDF,
+} from "./exportPDF";
 
-export type {
-  GeneratePdfOptions,
-  ReportImage,
-  ShipInfo,
-} from "./nativePdfGenerator";
+export type ReportImage = ExportPdfImage;
+export type ShipInfo = ExportPdfShipInfo;
+
+export type GeneratePdfOptions = {
+  shipInfo: ShipInfo;
+  images: ReportImage[];
+  imagesPerPage: 2 | 4 | 6 | 8;
+};
 
 export async function generatePdfUri(options: GeneratePdfOptions): Promise<string> {
-  return generatePDF({
-    images: options.images,
-    imagesPerPage: options.imagesPerPage,
-    reportDetails: options.shipInfo,
-  });
+  return exportPDF(options.images, options.imagesPerPage, options.shipInfo);
 }
 
 export async function generateAndSharePdf(
   options: GeneratePdfOptions,
 ): Promise<string> {
-  return generateAndSharePDF({
-    images: options.images,
-    imagesPerPage: options.imagesPerPage,
-    reportDetails: options.shipInfo,
-  });
+  return generatePdfUri(options);
 }
 
 export async function exportInspectionPDF(

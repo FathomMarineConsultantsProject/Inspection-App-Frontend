@@ -36,7 +36,15 @@ export async function processImage(uri: string): Promise<string> {
 
     return result.uri || uri;
   } catch {
-    return uri;
+    try {
+      const fallback = await ImageManipulator.manipulateAsync(uri, [], {
+        compress: EXPORT_QUALITY,
+        format: ImageManipulator.SaveFormat.JPEG,
+      });
+      return fallback.uri || uri;
+    } catch {
+      return uri;
+    }
   }
 }
 

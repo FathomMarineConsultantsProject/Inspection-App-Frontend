@@ -84,7 +84,6 @@ export default function ImageProcessingScreen({ navigation, route }: Props) {
           id: makeId(),
           uri: processedUri,
           exportUri: processedUri,
-          originalUri: asset.uri,
           description: "",
           title: "",
         };

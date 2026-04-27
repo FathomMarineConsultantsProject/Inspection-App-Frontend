@@ -1,6 +1,4 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as FileSystem from "expo-file-system/legacy";
-import * as Sharing from "expo-sharing";
 import React, { useEffect, useMemo, useState } from "react";
 import {
     Alert,
@@ -19,13 +17,13 @@ import PrimaryButton from "../components/PrimaryButton";
 import { useAuth } from "../context/AuthContext";
 import { syncPendingInspections } from "../services/syncInspection";
 import { generateAndShareDocx } from "../utils/docxExport";
+import { exportPDF as exportPdfFile } from "../utils/exportPDF";
 import {
     parseInspectionsFromStorage,
     type ExportType,
     type Inspection,
     type ReportImage,
 } from "../utils/inspectionStorage";
-import { generatePDF } from "../utils/nativePdfGenerator";
 import { persistImage } from "../utils/persistImage";
 import { loadScopedInspectionsWithMigration } from "../utils/storageScope";
 
@@ -171,34 +169,6 @@ export default function ReportPreviewScreen({ navigation, route }: any) {
     };
   }, [inspectionId, user?.id]);
 
-  useEffect(() => {
-    async function checkImageUrisExist() {
-      async function checkImageExists(uri: string): Promise<boolean> {
-        try {
-          const info = await FileSystem.getInfoAsync(uri);
-          return info.exists;
-        } catch {
-          return false;
-        }
-      }
-
-      const uris = [shipInfo?.shipPhotoUri, ...safeImages.map((img) => img.uri)].filter(
-        (uri): uri is string => !!uri,
-      );
-
-      await Promise.all(
-        uris.map(async (uri) => {
-          const exists = await checkImageExists(uri);
-          if (!exists) {
-            console.log("Image file missing:", uri);
-          }
-        }),
-      );
-    }
-
-    void checkImageUrisExist();
-  }, [safeImages, shipInfo?.shipPhotoUri]);
-
   async function prepareImagesForExport(): Promise<PreviewReportImage[]> {
     const prepared = [...safeImages];
     setImages(prepared);
@@ -242,32 +212,21 @@ export default function ReportPreviewScreen({ navigation, route }: any) {
     }
   }
 
-  async function exportPDF() {
+  async function handleExportPDF() {
     try {
       setExporting("pdf");
       const prepared = await prepareImagesForExport();
-      const pdfPath = await generatePDF({
-        images: toExportImages(prepared),
-        imagesPerPage: safeImagesPerPage,
-        reportDetails: {
+      await exportPdfFile(
+        toExportImages(prepared),
+        safeImagesPerPage,
+        {
           companyName: shipInfo?.companyName || shipInfo?.shipName || "Inspection Report",
           shipName: shipInfo?.shipName,
           inspector: shipInfo?.inspectorName || shipInfo?.surveyorName,
           port: shipInfo?.portName || shipInfo?.location,
           date: shipInfo?.inspectionDate || shipInfo?.date,
         },
-      });
-
-      const canShare = await Sharing.isAvailableAsync();
-      if (!canShare) {
-        throw new Error(`Sharing is not available on this device. PDF saved at: ${pdfPath}`);
-      }
-
-      await Sharing.shareAsync(pdfPath, {
-        mimeType: "application/pdf",
-        dialogTitle: "Share Inspection Report",
-        UTI: "com.adobe.pdf",
-      });
+      );
 
       if (inspectionId) {
         const timestamp = new Date().toISOString();
@@ -504,7 +463,7 @@ export default function ReportPreviewScreen({ navigation, route }: any) {
         <View style={styles.actionGroup}>
           <PrimaryButton
             title={exporting === "pdf" ? "Exporting..." : "Export as PDF"}
-            onPress={exportPDF}
+            onPress={handleExportPDF}
             disabled={exporting !== null}
           />
           <PrimaryButton

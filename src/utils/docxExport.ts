@@ -1,15 +1,43 @@
 import {
-  AlignmentType,
-  Document,
-  ImageRun,
-  Packer,
-  Paragraph,
-  TextRun,
+    AlignmentType,
+    Document,
+    ImageRun,
+    Packer,
+    Paragraph,
+    TextRun,
 } from "docx";
 import * as FileSystem from "expo-file-system/legacy";
 import * as ImageManipulator from "expo-image-manipulator";
 import * as Sharing from "expo-sharing";
-import { GeneratePdfOptions } from "./nativePdfGenerator";
+
+type ReportImage = {
+  uri: string;
+  exportUri?: string;
+  description: string;
+};
+
+type ShipInfo = {
+  shipName?: string;
+  shipType?: string;
+  inspector?: string;
+  inspectorName?: string;
+  surveyorName?: string;
+  port?: string;
+  portName?: string;
+  location?: string;
+  date?: string;
+  inspectionDate?: string;
+  companyName?: string;
+  shipPhotoUri?: string;
+  companyLogoUri?: string;
+  totalPhotos?: number;
+};
+
+type GeneratePdfOptions = {
+  shipInfo: ShipInfo;
+  images: ReportImage[];
+  imagesPerPage: 2 | 4 | 6 | 8;
+};
 
 function chunkArray<T>(arr: T[], size: number): T[][] {
   const chunks: T[][] = [];
